@@ -1,0 +1,264 @@
+/**
+ * Sources de marche, toutes gratuites et sans cle API.
+ * Tout part du main process : Yahoo n'envoie aucun header CORS.
+ *
+ *   crypto  spot+var : Binance  /ticker/24hr   (1 appel pour toutes les paires)
+ *   crypto  courbe   : Binance  /klines
+ *   metaux  spot     : gold-api.com           (vrai spot, pas le future)
+ *   metaux  var      : Yahoo spark GC=F...    (1 appel groupe avec le forex)
+ *   metaux  courbe   : Yahoo chart, renormalisee sur le spot (prime future ~1 %)
+ *   forex   spot+var : Yahoo spark EURUSD=X...
+ *   forex   courbe   : Yahoo chart intraday, Frankfurter (BCE) au-dela de 1 mois
+ */
+
+const UA = 'CryptoTickerDashboard/2.0'; // Yahoo bloque curl/python, pas les UA custom
+const YQ = 'https://query1.finance.yahoo.com';
+const BINANCE = 'https://api.binance.com/api/v3';
+
+/* ---------------- catalogue metaux ---------------- */
+
+const METALS = {
+  XAU: { label: 'Or', yahoo: 'GC=F' },
+  XAG: { label: 'Argent', yahoo: 'SI=F' },
+  XPT: { label: 'Platine', yahoo: 'PL=F' },
+  XPD: { label: 'Palladium', yahoo: 'PA=F' },
+  HG: { label: 'Cuivre', yahoo: 'HG=F' },
+};
+
+const keyOf = (it) =>
+  it.kind === 'crypto' ? `crypto:${it.binance}`
+  : it.kind === 'metal' ? `metal:${it.code}`
+  : `fx:${it.from}${it.to}`;
+
+/* ---------------- utilitaires ---------------- */
+
+async function getJson(url, opts = {}) {
+  const res = await fetch(url, {
+    headers: { 'User-Agent': UA, Accept: 'application/json' },
+    ...opts,
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} sur ${new URL(url).hostname}`);
+  return res.json();
+}
+
+const yahooSymbolOf = (it) =>
+  it.kind === 'metal' ? METALS[it.code]?.yahoo : `${it.from}${it.to}=X`;
+
+/** Zippe timestamps/closes en filtrant les null (Yahoo en renvoie regulierement). */
+function zipYahoo(result) {
+  const ts = result.timestamp || [];
+  const cl = result.indicators?.quote?.[0]?.close || [];
+  const pts = [];
+  for (let i = 0; i < ts.length; i++) {
+    if (cl[i] != null) pts.push([ts[i] * 1000, cl[i]]);
+  }
+  return pts;
+}
+
+/* ---------------- spot + variation 24 h ---------------- */
+
+async function fetchCrypto(items, out) {
+  if (!items.length) return;
+  const symbols = JSON.stringify(items.map((i) => i.binance));
+  const data = await getJson(`${BINANCE}/ticker/24hr?symbols=${encodeURIComponent(symbols)}`);
+  const bySym = new Map(data.map((d) => [d.symbol, d]));
+  for (const it of items) {
+    const d = bySym.get(it.binance);
+    out[keyOf(it)] = d
+      ? { price: parseFloat(d.lastPrice), change24h: parseFloat(d.priceChangePercent) }
+      : { price: null, change24h: null };
+  }
+}
+
+/** Un seul appel spark couvre metaux ET devises. */
+async function fetchYahooSpark(items, out) {
+  if (!items.length) return;
+  const symbols = items.map(yahooSymbolOf).filter(Boolean);
+  if (!symbols.length) return;
+
+  const url = `${YQ}/v7/finance/spark?symbols=${encodeURIComponent(symbols.join(','))}&range=1d&interval=5m`;
+  const data = await getJson(url);
+  const results = data.spark?.result || data.result || [];
+  const bySym = new Map(results.map((r) => [r.symbol, r.response?.[0]?.meta]));
+
+  for (const it of items) {
+    const m = bySym.get(yahooSymbolOf(it));
+    if (!m) { out[keyOf(it)] = { price: null, change24h: null }; continue; }
+    const price = m.regularMarketPrice ?? null;
+    const prev = m.chartPreviousClose ?? m.previousClose ?? null;
+    out[keyOf(it)] = {
+      price,
+      change24h: price != null && prev ? ((price - prev) / prev) * 100 : null,
+    };
+  }
+}
+
+/**
+ * Yahoo cote le FUTURE (GC=F a ~+1 % sur le spot). On garde sa variation 24 h
+ * mais on remplace le prix par le vrai spot gold-api.
+ */
+async function overlayMetalSpot(items, out) {
+  await Promise.all(
+    items.map(async (it) => {
+      try {
+        const d = await getJson(`https://api.gold-api.com/price/${it.code}`);
+        if (typeof d.price === 'number') {
+          const k = keyOf(it);
+          out[k] = { ...(out[k] || { change24h: null }), price: d.price };
+        }
+      } catch {
+        /* on conserve le prix future de Yahoo en repli */
+      }
+    })
+  );
+}
+
+async function getQuotes(items) {
+  const out = {};
+  const crypto = items.filter((i) => i.kind === 'crypto');
+  const metals = items.filter((i) => i.kind === 'metal');
+  const fx = items.filter((i) => i.kind === 'fx');
+
+  const jobs = [
+    fetchCrypto(crypto, out).catch(() => {}),
+    fetchYahooSpark([...metals, ...fx], out).catch(() => {}),
+  ];
+  await Promise.all(jobs);
+  await overlayMetalSpot(metals, out).catch(() => {});
+
+  for (const it of items) {
+    if (!out[keyOf(it)]) out[keyOf(it)] = { price: null, change24h: null };
+  }
+  return out;
+}
+
+/* ---------------- courbes ---------------- */
+
+const H = 3600e3;
+const D = 864e5;
+
+/**
+ * Periodes proposees. Binance accepte un interval + un nombre de bougies, donc
+ * la fenetre est exacte. Yahoo n'accepte qu'une liste fermee de `range` : on
+ * demande le plus petit qui COUVRE la periode, puis on tronque sur `ms`.
+ * Contraintes Yahoo respectees ici : 1m limite aux 7 derniers jours, et tout
+ * intervalle infra-journalier limite a 60 jours.
+ */
+const PERIODS = {
+  '1h':  { ms: H,        binance: ['1m', 60],   yahoo: ['1d', '1m'] },
+  '3h':  { ms: 3 * H,    binance: ['1m', 180],  yahoo: ['1d', '1m'] },
+  '6h':  { ms: 6 * H,    binance: ['5m', 72],   yahoo: ['1d', '2m'] },
+  '12h': { ms: 12 * H,   binance: ['5m', 144],  yahoo: ['1d', '5m'] },
+  '24h': { ms: 24 * H,   binance: ['5m', 288],  yahoo: ['5d', '5m'] },
+  '3d':  { ms: 3 * D,    binance: ['15m', 288], yahoo: ['5d', '15m'] },
+  '1w':  { ms: 7 * D,    binance: ['1h', 168],  yahoo: ['7d', '1h'] },
+  '30d': { ms: 30 * D,   binance: ['4h', 180],  yahoo: ['1mo', '1h'] },
+  '60d': { ms: 60 * D,   binance: ['8h', 180],  yahoo: ['3mo', '1d'] },
+  '90d': { ms: 90 * D,   binance: ['12h', 180], yahoo: ['3mo', '1d'] },
+  '6m':  { ms: 182 * D,  binance: ['1d', 182],  yahoo: ['6mo', '1d'] },
+  '1y':  { ms: 365 * D,  binance: ['1d', 365],  yahoo: ['1y', '1d'] },
+  '3y':  { ms: 1095 * D, binance: ['3d', 365],  yahoo: ['5y', '1wk'] },
+  '5y':  { ms: 1825 * D, binance: ['1w', 260],  yahoo: ['5y', '1wk'] },
+};
+
+const periodOf = (range) => PERIODS[range] || PERIODS['1w'];
+
+/** Ne garde que ce qui tombe dans la fenetre demandee. */
+function clip(points, ms) {
+  const cutoff = Date.now() - ms;
+  const kept = points.filter((p) => p[0] >= cutoff);
+  // Une periode plus courte que le pas de cotation (marche ferme le week-end,
+  // par exemple) viderait la courbe : on rend alors les derniers points bruts.
+  return kept.length >= 2 ? kept : points.slice(-2);
+}
+
+async function chartCrypto(item, range) {
+  const [interval, limit] = periodOf(range).binance;
+  const url = `${BINANCE}/klines?symbol=${item.binance}&interval=${interval}&limit=${limit}`;
+  const rows = await getJson(url);
+  return rows.map((k) => [k[0], parseFloat(k[4])]); // openTime ms, close
+}
+
+async function chartYahoo(item, range) {
+  const p = periodOf(range);
+  const [yRange, interval] = p.yahoo;
+  const sym = yahooSymbolOf(item);
+  const url = `${YQ}/v8/finance/chart/${encodeURIComponent(sym)}?range=${yRange}&interval=${interval}`;
+  const data = await getJson(url);
+  const result = data.chart?.result?.[0];
+  if (!result) throw new Error('série Yahoo vide');
+  return clip(zipYahoo(result), p.ms);
+}
+
+async function getChart(item, range) {
+  if (item.kind === 'crypto') return { points: await chartCrypto(item, range) };
+
+  const points = await chartYahoo(item, range);
+  if (!points.length) return { points };
+
+  // Recale la courbe du future sur le spot reel, sinon l'axe ne colle pas au prix affiche.
+  if (item.kind === 'metal') {
+    try {
+      const d = await getJson(`https://api.gold-api.com/price/${item.code}`);
+      const last = points[points.length - 1][1];
+      if (typeof d.price === 'number' && last) {
+        const factor = d.price / last;
+        return { points: points.map(([t, v]) => [t, v * factor]), rebased: true };
+      }
+    } catch {
+      /* courbe future brute */
+    }
+  }
+  return { points };
+}
+
+/* ---------------- catalogues pour l'ajout ---------------- */
+
+let binanceSymbolsCache = null;
+
+async function listCryptoSymbols() {
+  if (binanceSymbolsCache) return binanceSymbolsCache;
+  const rows = await getJson(`${BINANCE}/ticker/price`);
+  binanceSymbolsCache = rows.map((r) => r.symbol);
+  return binanceSymbolsCache;
+}
+
+/** Decoupe BTCUSDT -> base BTC / quote USDT, en testant les quotes connues. */
+const QUOTES = ['USDT', 'FDUSD', 'USDC', 'TUSD', 'BUSD', 'EUR', 'TRY', 'BTC', 'ETH', 'BNB'];
+
+async function searchCrypto(query) {
+  const q = query.trim().toUpperCase();
+  if (q.length < 2) return [];
+  const symbols = await listCryptoSymbols();
+  const hits = [];
+  for (const s of symbols) {
+    if (!s.includes(q)) continue;
+    const quote = QUOTES.find((x) => s.endsWith(x));
+    if (!quote) continue;
+    const base = s.slice(0, -quote.length);
+    if (!base) continue;
+    hits.push({ binance: s, symbol: base, vs: quote });
+  }
+  // Les paires en USDT d'abord, puis les bases les plus courtes (BTC avant BTCDOWN).
+  hits.sort((a, b) => {
+    if ((a.vs === 'USDT') !== (b.vs === 'USDT')) return a.vs === 'USDT' ? -1 : 1;
+    return a.symbol.length - b.symbol.length || a.symbol.localeCompare(b.symbol);
+  });
+  return hits.slice(0, 30);
+}
+
+const FX_CURRENCIES = [
+  'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CAD', 'AUD', 'NZD', 'CNY', 'HKD',
+  'SGD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'TRY', 'MXN', 'BRL',
+  'ZAR', 'INR', 'KRW', 'RUB', 'THB', 'ILS',
+];
+
+module.exports = {
+  METALS,
+  FX_CURRENCIES,
+  PERIODS,
+  keyOf,
+  getQuotes,
+  getChart,
+  searchCrypto,
+};

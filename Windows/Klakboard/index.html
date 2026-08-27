@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Klakboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+
+    <!-- ================= colonne marches ================= -->
+    <section class="markets">
+      <header class="mHead">
+        <span class="dot" id="statusDot"></span>
+        <span class="stamp" id="stamp">connexion...</span>
+        <div class="headBtns">
+          <button class="iBtn" id="refreshBtn" title="Rafraîchir">&#8635;</button>
+          <button class="iBtn" id="addBtn" title="Ajouter une ligne">&#43;</button>
+          <button class="iBtn" id="setBtn" title="Réglages">&#9881;</button>
+          <button class="iBtn danger" id="quitBtn" title="Masquer dans la zone de notifications">&#10005;</button>
+        </div>
+      </header>
+      <div class="mScroll" id="mScroll"></div>
+    </section>
+
+    <!-- ================= colonne systeme ================= -->
+    <section class="sys">
+
+      <div class="card grow">
+        <div class="cHead"><span>CPU</span><span class="cVal" id="cpuAvg">--</span></div>
+        <div class="cores" id="cores"></div>
+        <div class="cFoot"><span id="cpuModel">--</span><span id="cpuCount">--</span></div>
+      </div>
+
+      <div class="card">
+        <div class="cHead"><span>RAM</span><span class="cVal" id="ramPct">--</span></div>
+        <div class="bar"><div class="barFill" id="ramBar"></div></div>
+        <div class="cFoot"><span id="ramUsed">--</span><span id="ramFree">--</span></div>
+      </div>
+
+      <div class="card" id="gpuCard">
+        <div class="cHead"><span>GPU</span><span class="cVal" id="gpuUtil">--</span></div>
+        <div class="bar"><div class="barFill" id="gpuBar"></div></div>
+        <div class="miniRow"><span class="miniLbl">vram</span><div class="bar sm"><div class="barFill" id="vramBar"></div></div><span class="miniVal" id="vramVal">--</span></div>
+        <div class="cFoot"><span id="gpuName">--</span><span id="gpuFanTemp">--</span></div>
+      </div>
+
+      <div class="card net grow">
+        <div class="cHead"><span>RÉSEAU</span><button class="purge" id="purgeBtn" title="Purger les cumuls">purger</button></div>
+        <div class="netLive">
+          <div class="netCol">
+            <div class="netArrow down">&#9660;</div>
+            <div class="netRate" id="netDown">--</div>
+            <div class="netUnit" id="netDownU">MB/s</div>
+          </div>
+          <div class="netCol">
+            <div class="netArrow up">&#9650;</div>
+            <div class="netRate" id="netUp">--</div>
+            <div class="netUnit" id="netUpU">MB/s</div>
+          </div>
+        </div>
+        <div class="netSpark" id="netSpark"></div>
+        <div class="cFoot"><span id="totDown">&#8595; --</span><span id="totUp">&#8593; --</span></div>
+      </div>
+
+    </section>
+  </div>
+
+  <!-- ================= overlay courbe ================= -->
+  <div class="ov" id="chartOv" hidden>
+    <div class="ovBox chartBox">
+      <div class="ovHead">
+        <div>
+          <div class="ovTitle" id="chTitle">--</div>
+          <div class="ovSub"><span id="chPrice">--</span> <span id="chChange"></span></div>
+        </div>
+        <button class="iBtn" data-close>&#10005;</button>
+      </div>
+      <div class="chartArea" id="chartArea"></div>
+      <div class="ranges" id="ranges">
+        <button class="chip" data-range="1h">1 h</button>
+        <button class="chip" data-range="3h">3 h</button>
+        <button class="chip" data-range="6h">6 h</button>
+        <button class="chip" data-range="12h">12 h</button>
+        <button class="chip" data-range="24h">24 h</button>
+        <button class="chip" data-range="3d">3 j</button>
+        <button class="chip active" data-range="1w">1 sem</button>
+        <button class="chip" data-range="30d">30 j</button>
+        <button class="chip" data-range="60d">60 j</button>
+        <button class="chip" data-range="90d">90 j</button>
+        <button class="chip" data-range="6m">6 m</button>
+        <button class="chip" data-range="1y">1 an</button>
+        <button class="chip" data-range="3y">3 ans</button>
+        <button class="chip" data-range="5y">5 ans</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= overlay ajout ================= -->
+  <div class="ov" id="addOv" hidden>
+    <div class="ovBox">
+      <div class="ovHead">
+        <div class="ovTitle">Ajouter une ligne</div>
+        <button class="iBtn" data-close>&#10005;</button>
+      </div>
+      <div class="tabs" id="addTabs">
+        <button class="chip active" data-tab="metal">Métal</button>
+        <button class="chip" data-tab="fx">Devise</button>
+        <button class="chip" data-tab="crypto">Crypto</button>
+      </div>
+
+      <div class="tabPane" data-pane="metal">
+        <div class="pickGrid" id="metalPick"></div>
+      </div>
+
+      <div class="tabPane" data-pane="fx" hidden>
+        <div class="fxRow">
+          <select class="input" id="fxFrom"></select>
+          <span class="fxSep">/</span>
+          <select class="input" id="fxTo"></select>
+        </div>
+        <button class="primary" id="fxAdd">Ajouter la paire</button>
+      </div>
+
+      <div class="tabPane" data-pane="crypto" hidden>
+        <input class="input" id="cSearch" placeholder="BTC, SOL, DOGE..." autocomplete="off" />
+        <ul class="results" id="cResults"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= overlay reglages ================= -->
+  <div class="ov" id="setOv" hidden>
+    <div class="ovBox">
+      <div class="ovHead">
+        <div class="ovTitle">Réglages</div>
+        <button class="iBtn" data-close>&#10005;</button>
+      </div>
+      <div class="fLabel">Thème</div>
+      <div class="chips" id="themes">
+        <button class="chip" data-theme="dark">Sombre</button>
+        <button class="chip" data-theme="light">Clair</button>
+        <button class="chip" data-theme="red">Rouge</button>
+        <button class="chip" data-theme="blue">Bleu</button>
+        <button class="chip" data-theme="green">Vert</button>
+        <button class="chip" data-theme="yellow">Jaune</button>
+        <button class="chip" data-theme="purple">Violet</button>
+      </div>
+
+      <div class="fLabel">Plein écran sur…</div>
+      <div class="dispList" id="dispList"></div>
+
+      <div class="fLabel">Résolution fenêtrée</div>
+      <div class="chips" id="resList">
+        <button class="chip" data-w="960" data-h="640">960 &times; 640</button>
+        <button class="chip" data-w="800" data-h="600">800 &times; 600</button>
+        <button class="chip" data-w="1024" data-h="600">1024 &times; 600</button>
+        <button class="chip" data-w="1280" data-h="720">1280 &times; 720</button>
+        <button class="chip" data-w="640" data-h="480">640 &times; 480</button>
+      </div>
+
+      <div class="fLabel">Taille de l'affichage</div>
+      <div class="chips" id="zooms">
+        <button class="chip" data-z="1">100 %</button>
+        <button class="chip" data-z="1.15">115 %</button>
+        <button class="chip" data-z="1.3">130 %</button>
+        <button class="chip" data-z="1.5">150 %</button>
+        <button class="chip" data-z="1.75">175 %</button>
+      </div>
+
+      <div class="fLabel">Rafraîchissement des marchés</div>
+      <div class="chips" id="intervals">
+        <button class="chip" data-ms="10000">10 s</button>
+        <button class="chip" data-ms="20000">20 s</button>
+        <button class="chip" data-ms="30000">30 s</button>
+        <button class="chip" data-ms="60000">1 min</button>
+        <button class="chip" data-ms="300000">5 min</button>
+      </div>
+      <label class="switchRow">
+        <span>Recouvrir la barre des tâches</span>
+        <input type="checkbox" id="coverTgl" />
+        <span class="switch"></span>
+      </label>
+      <label class="switchRow">
+        <span>Démarrer à l'ouverture de session</span>
+        <input type="checkbox" id="autoTgl" />
+        <span class="switch"></span>
+      </label>
+      <p class="hint">Le système (CPU, RAM, GPU, réseau) se met à jour chaque seconde, indépendamment de ce réglage.</p>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

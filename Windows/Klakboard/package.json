@@ -1,0 +1,51 @@
+{
+  "name": "klakboard",
+  "version": "1.0.0",
+  "description": "Klakboard — tableau de bord marches (metaux, devises, cryptos) et monitoring systeme, pour petit ecran secondaire",
+  "main": "main.js",
+  "author": "Klakh",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.klakh.klakboard",
+    "productName": "Klakboard",
+    "publish": null,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "markets.js",
+      "system.js",
+      "index.html",
+      "renderer.js",
+      "style.css",
+      "build/icon.ico"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "signAndEditExecutable": false,
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Klakh/widgets.git"
+  }
+}
