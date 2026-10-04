@@ -97,4 +97,4 @@ async function getWeather() {
   };
 }
 
-module.exports = { getWeather, CARD_URL };
+module.exports = { getWeather, iconName, WMO, CARD_URL };

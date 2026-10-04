@@ -7,6 +7,7 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
+    "test": "node --test test/main.test.js test/units.test.js",
     "dist": "electron-builder --win"
   },
   "devDependencies": {
@@ -32,6 +33,7 @@
       "weather.js",
       "updates.js",
       "updater.js",
+      "display.js",
       "icons/**/*"
     ],
     "win": {

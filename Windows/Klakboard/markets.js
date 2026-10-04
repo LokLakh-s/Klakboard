@@ -8,10 +8,12 @@
  *   metaux  var      : Yahoo spark GC=F...    (1 appel groupe avec le forex)
  *   metaux  courbe   : Yahoo chart, renormalisee sur le spot (prime future ~1 %)
  *   forex   spot+var : Yahoo spark EURUSD=X...
- *   forex   courbe   : Yahoo chart intraday, Frankfurter (BCE) au-dela de 1 mois
+ *   forex   courbe   : Yahoo chart
  */
 
-const UA = 'CryptoTickerDashboard/2.0'; // Yahoo bloque curl/python, pas les UA custom
+const { version } = require('./package.json');
+
+const UA = `Klakboard/${version}`; // Yahoo bloque curl/python, pas les UA custom
 const YQ = 'https://query1.finance.yahoo.com';
 const BINANCE = 'https://api.binance.com/api/v3';
 
@@ -32,12 +34,24 @@ const keyOf = (it) =>
 
 /* ---------------- utilitaires ---------------- */
 
+// Sans delai maximum, une requete qui ne repond jamais bloquait le cycle de
+// rafraichissement indefiniment.
+const TIMEOUT_MS = 10000;
+
 async function getJson(url, opts = {}) {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': UA, Accept: 'application/json' },
-    ...opts,
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status} sur ${new URL(url).hostname}`);
+  const host = new URL(url).hostname;
+  let res;
+  try {
+    res = await fetch(url, {
+      headers: { 'User-Agent': UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      ...opts,
+    });
+  } catch (err) {
+    if (err.name === 'TimeoutError') throw new Error(`délai dépassé sur ${host}`);
+    throw new Error(`${host} injoignable`);
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status} sur ${host}`);
   return res.json();
 }
 
@@ -97,7 +111,7 @@ async function fetchYahooSpark(items, out) {
  * Yahoo cote le FUTURE (GC=F a ~+1 % sur le spot). On garde sa variation 24 h
  * mais on remplace le prix par le vrai spot gold-api.
  */
-async function overlayMetalSpot(items, out) {
+async function overlayMetalSpot(items, out, errors) {
   await Promise.all(
     items.map(async (it) => {
       try {
@@ -106,30 +120,35 @@ async function overlayMetalSpot(items, out) {
           const k = keyOf(it);
           out[k] = { ...(out[k] || { change24h: null }), price: d.price };
         }
-      } catch {
-        /* on conserve le prix future de Yahoo en repli */
+      } catch (err) {
+        // Le prix future de Yahoo reste affiche en repli (~1 % au-dessus du spot).
+        errors.push(`gold-api (${it.code}) : ${err.message}`);
       }
     })
   );
 }
 
+/**
+ * Renvoie { quotes, errors } : une source en panne n'empeche pas les autres de
+ * repondre, mais son erreur remonte au lieu d'etre avalee.
+ */
 async function getQuotes(items) {
   const out = {};
+  const errors = [];
   const crypto = items.filter((i) => i.kind === 'crypto');
   const metals = items.filter((i) => i.kind === 'metal');
   const fx = items.filter((i) => i.kind === 'fx');
 
-  const jobs = [
-    fetchCrypto(crypto, out).catch(() => {}),
-    fetchYahooSpark([...metals, ...fx], out).catch(() => {}),
-  ];
-  await Promise.all(jobs);
-  await overlayMetalSpot(metals, out).catch(() => {});
+  await Promise.all([
+    fetchCrypto(crypto, out).catch((err) => errors.push(`Binance : ${err.message}`)),
+    fetchYahooSpark([...metals, ...fx], out).catch((err) => errors.push(`Yahoo : ${err.message}`)),
+  ]);
+  await overlayMetalSpot(metals, out, errors);
 
   for (const it of items) {
     if (!out[keyOf(it)]) out[keyOf(it)] = { price: null, change24h: null };
   }
-  return out;
+  return { quotes: out, errors };
 }
 
 /* ---------------- courbes ---------------- */

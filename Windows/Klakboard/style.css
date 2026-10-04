@@ -1,23 +1,21 @@
 /* Dashboard sur dalle de 7,5 x 5,3 cm en 960x640, vue a ~60 cm.
  *
  * DENSITE REELLE : 960 px / 75 mm = 12,8 px/mm (~325 PPI, diagonale 3,6").
- * Un texte de 16 px n'y fait que 1,25 mm de haut. A 60 cm de distance il faut
- * viser 2 mm minimum pour ne pas plisser les yeux, soit ~26 px. D'ou le
- * plancher a 1.15rem (23 px) pour TOUT texte, y compris secondaire.
+ * Un texte de 16 px n'y fait que 1,25 mm de haut. Le zoom des reglages
+ * (100 a 175 %) agrandit tout d'un bloc pour qui le veut plus gros.
  *
  * Le contraste compte autant que la taille a cette echelle : les gris sont
  * remontes de #7c89a1 (4,9:1) a #aab6c9 (~9:1 sur le fond des cartes).
  *
- *   1.15rem = 23px  plancher absolu (sous-titres, unites, %)
- *   1.20rem = 24px  libelles de donnees (pieds de carte, vram)
- *   1.30rem = 26px  en-tetes de carte (CPU, RAM, GPU, RESEAU)
- *   1.35rem = 27px  noms d'actifs
- *   1.45rem = 29px  prix
- *   1.55rem = 31px  valeurs de carte
- *   1.70rem = 34px  debits reseau
+ * Base 1rem = 16 px (taille par defaut, fixee par html, body plus bas).
+ * Tailles a 100 % :
+ *   1.15rem = 18,4 px  plus petit texte (unites, indications)
+ *   1.20rem = 19,2 px  pieds de carte, vram
+ *   1.30rem = 20,8 px  en-tetes de carte (CPU, RAM, GPU, RESEAU)
+ *   1.50rem = 24 px    symboles des badges
+ *   1.65rem = 26,4 px  prix
+ *   1.70rem = 27,2 px  debits reseau, valeurs meteo
  */
-
-html { font-size: 20px; }
 
 /* ================= themes =================
  * Tous volontairement desatures : sur une dalle a 12,8 px/mm collee aux yeux,
@@ -236,6 +234,8 @@ html, body {
 .badge:hover .bRm { opacity: 1; }
 .badge.up { border-left-color: var(--up); }
 .badge.down { border-left-color: var(--down); }
+/* Dernier cours connu, source muette depuis plusieurs cycles. */
+.badge.stale { opacity: .5; }
 
 /* Pas de marge reservee au bouton de retrait : il n'apparait qu'au survol et
    recouvre alors la fin du libelle ("Palladium" n'aurait pas tenu sinon). */

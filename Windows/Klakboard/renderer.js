@@ -44,6 +44,7 @@ function fmtBytes(b) {
 }
 
 function fmtRate(bytesPerSec) {
+  if (bytesPerSec == null) return ['--', ''];
   const bits = bytesPerSec;
   if (bits >= 1e6) return [(bits / 1e6).toFixed(1), 'MB/s'];
   if (bits >= 1e3) return [(bits / 1e3).toFixed(0), 'kB/s'];
@@ -120,11 +121,19 @@ function makeBadge(it) {
   return b;
 }
 
+let staleMs = 120000;
+
 function applyQuotes(quotes) {
   if (!quotes) return;
+  const now = Date.now();
   for (const [key, cell] of rowCells) {
     const q = quotes[key];
     if (!q) continue;
+
+    // Cours garde d'un cycle precedent faute de reponse : grise, heure en infobulle.
+    const stale = q.at != null && now - q.at > staleMs;
+    cell.badge.classList.toggle('stale', stale);
+    cell.badge.title = stale ? `Dernière cotation à ${new Date(q.at).toLocaleTimeString('fr-FR')}` : '';
 
     cell.price.textContent = fmtPrice(q.price);
 
@@ -148,19 +157,21 @@ function applyQuotes(quotes) {
   }
 }
 
-/* L'heure de mise a jour des marches migre sur l'infobulle de la pastille :
-   l'horloge courante vit desormais en pied de colonne (gros, lisible). */
+/* Pastille : verte si toutes les sources ont repondu, rouge sinon ; le detail
+   (source, erreur, heure) est dans son infobulle. */
 window.dash.onQuotes((d) => {
-  const dot = $('statusDot');
-  if (d.error) {
-    dot.className = 'dot error';
-    dot.title = `Erreur marchés : ${d.error}`;
-    return;
-  }
+  staleMs = d.staleMs || staleMs;
   lastQuotes = d.quotes;
   applyQuotes(d.quotes);
-  dot.className = 'dot live';
-  dot.title = `Marchés à jour — ${new Date(d.updatedAt).toLocaleTimeString('fr-FR')}`;
+  const dot = $('statusDot');
+  const at = new Date(d.updatedAt).toLocaleTimeString('fr-FR');
+  if (d.errors?.length) {
+    dot.className = 'dot error';
+    dot.title = `Marchés (${at}) — en panne :\n${d.errors.join('\n')}`;
+  } else {
+    dot.className = 'dot live';
+    dot.title = `Marchés à jour — ${at}`;
+  }
 });
 
 /* ---------------- horloge ---------------- */
@@ -271,8 +282,10 @@ window.dash.onSys((s) => {
   }
 
   // Reseau
-  const [dv, du] = fmtRate(s.net.rate.down);
-  const [uv2, uu2] = fmtRate(s.net.rate.up);
+  // rate vaut null quand les compteurs ne remontent plus : "--" plutot qu'un debit fige.
+  const rate = s.net.rate || { down: null, up: null };
+  const [dv, du] = fmtRate(rate.down);
+  const [uv2, uu2] = fmtRate(rate.up);
   $('netDown').textContent = dv;
   $('netDownU').textContent = du;
   $('netUp').textContent = uv2;
@@ -282,7 +295,7 @@ window.dash.onSys((s) => {
   $('totDown').textContent = `↓ ${trv} ${tru}`;
   $('totUp').textContent = `↑ ${ttv} ${ttu}`;
 
-  pushNetHistory(s.net.rate.down, s.net.rate.up);
+  pushNetHistory(rate.down ?? 0, rate.up ?? 0);
 });
 
 /* ---------------- historique de debit ---------------- */

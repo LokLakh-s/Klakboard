@@ -55,21 +55,23 @@ function ramUsage() {
 /* ---------------- GPU ---------------- */
 
 const GPU_QUERY = 'utilization.gpu,memory.used,memory.total,fan.speed,temperature.gpu';
+const GPU_RETRY_MS = 30000;
 let gpuState = null;
 let gpuName = null;
-let gpuAvailable = true;
+let gpuRetryAt = 0;
 
 function pollGpu() {
-  if (!gpuAvailable) return;
+  if (Date.now() < gpuRetryAt) return;
   execFile(
     'nvidia-smi',
     [`--query-gpu=name,${GPU_QUERY}`, '--format=csv,noheader,nounits'],
     { timeout: 4000, windowsHide: true },
     (err, stdout) => {
       if (err) {
-        // Pas de GPU NVIDIA (ou pilote absent) : on arrete d'essayer.
-        gpuAvailable = false;
         gpuState = null;
+        // nvidia-smi absent : pas de GPU NVIDIA, inutile d'insister. Autre echec
+        // (pilote en cours de mise a jour, delai depasse sous charge) : on retente.
+        gpuRetryAt = err.code === 'ENOENT' ? Infinity : Date.now() + GPU_RETRY_MS;
         return;
       }
       const parts = stdout.trim().split('\n')[0].split(',').map((s) => s.trim());
@@ -93,9 +95,12 @@ function pollGpu() {
 
 /* ---------------- Reseau ---------------- */
 
+// La boucle s'arrete d'elle-meme si Klakboard disparait (plantage, arret
+// force) : sans ce controle, elle tournait indefiniment en arriere-plan.
 const PS_NET_LOOP = `
 $ErrorActionPreference = 'SilentlyContinue'
 while ($true) {
+  if (-not (Get-Process -Id ${process.pid})) { exit }
   $s = Get-NetAdapterStatistics | Where-Object {
     $_.Name -notlike '*vEthernet*' -and
     $_.Name -notlike '*Loopback*'  -and
@@ -103,8 +108,10 @@ while ($true) {
   }
   $rx = ($s | Measure-Object -Property ReceivedBytes -Sum).Sum
   $tx = ($s | Measure-Object -Property SentBytes -Sum).Sum
-  [Console]::Out.WriteLine("$rx $tx")
-  [Console]::Out.Flush()
+  try {
+    [Console]::Out.WriteLine("$rx $tx")
+    [Console]::Out.Flush()
+  } catch { exit }
   Start-Sleep -Milliseconds ${TICK_MS}
 }
 `;
@@ -131,8 +138,10 @@ function readProcNetDev() {
 }
 
 let netProc = null;
+let netStopped = false;
+let netRestartMs = 2000;
 let prevNet = null;      // { rx, tx, at }
-let netRate = { down: 0, up: 0 };   // octets/s
+let netRate = { down: 0, up: 0 };   // octets/s ; null si les compteurs ne remontent plus
 let netDelta = { rx: 0, tx: 0 };    // octets depuis le tick precedent
 
 function onNetCounters(rx, tx) {
@@ -148,22 +157,43 @@ function onNetCounters(rx, tx) {
   prevNet = { rx, tx, at };
 }
 
-function startNet() {
-  if (IS_WIN) {
-    netProc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', PS_NET_LOOP], {
-      windowsHide: true,
-    });
-    let buf = '';
-    netProc.stdout.on('data', (chunk) => {
-      buf += chunk.toString();
-      const lines = buf.split('\n');
-      buf = lines.pop();
-      for (const line of lines) {
-        const [rx, tx] = line.trim().split(/\s+/).map(Number);
-        if (Number.isFinite(rx) && Number.isFinite(tx)) onNetCounters(rx, tx);
+/** Lance la boucle PowerShell, relancee avec un delai croissant si elle s'arrete. */
+function spawnNetLoop() {
+  const proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', PS_NET_LOOP], {
+    windowsHide: true,
+  });
+  netProc = proc;
+  let buf = '';
+  proc.stdout.on('data', (chunk) => {
+    buf += chunk.toString();
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      const [rx, tx] = line.trim().split(/\s+/).map(Number);
+      if (Number.isFinite(rx) && Number.isFinite(tx)) {
+        onNetCounters(rx, tx);
+        netRestartMs = 2000;
       }
-    });
-    netProc.on('error', () => { netProc = null; });
+    }
+  });
+  // 'error' (spawn impossible) et 'exit' peuvent se suivre : une seule relance.
+  let restarted = false;
+  const restart = () => {
+    if (restarted) return;
+    restarted = true;
+    if (netProc === proc) netProc = null;
+    if (netStopped) return;
+    setTimeout(spawnNetLoop, netRestartMs);
+    netRestartMs = Math.min(netRestartMs * 2, 60000);
+  };
+  proc.on('error', restart);
+  proc.on('exit', restart);
+}
+
+function startNet() {
+  netStopped = false;
+  if (IS_WIN) {
+    spawnNetLoop();
   } else {
     setInterval(() => {
       const c = readProcNetDev();
@@ -183,6 +213,8 @@ function start(onSample) {
   gpuTimer = setInterval(pollGpu, GPU_MS);
 
   tickTimer = setInterval(() => {
+    // Compteurs muets (boucle reseau arretee) : on n'affiche pas un debit fige.
+    if (prevNet && Date.now() - prevNet.at > 3 * TICK_MS) netRate = null;
     const sample = {
       cpu: cpuUsage(),
       ram: ramUsage(),
@@ -197,6 +229,7 @@ function start(onSample) {
 }
 
 function stop() {
+  netStopped = true;
   clearInterval(tickTimer);
   clearInterval(gpuTimer);
   if (netProc) netProc.kill();

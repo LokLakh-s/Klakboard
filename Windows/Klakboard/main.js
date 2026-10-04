@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, globalShortcut, Tray, Menu, nativeImage, shell, dialog, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, Tray, Menu, nativeImage, shell, dialog, Notification, powerMonitor } = require('electron');
 const { spawn } = require('child_process');
 const os = require('os');
 const path = require('path');
@@ -8,6 +8,7 @@ const markets = require('./markets');
 const system = require('./system');
 const weather = require('./weather');
 const updates = require('./updates');
+const display = require('./display');
 const { version: APP_VERSION } = require('./package.json');
 
 /* ---------------- configuration ---------------- */
@@ -19,6 +20,7 @@ const DEFAULT_CONFIG = {
   theme: 'dark',
   netTotals: { rx: 0, tx: 0 },
   bounds: null,
+  display: null,   // ecran choisi dans "Plein ecran sur…" : { id, width, height }
   items: [
     { kind: 'metal', code: 'XAU' },
     { kind: 'metal', code: 'XAG' },
@@ -55,46 +57,86 @@ function quitApp() {
 const configPath = () => path.join(app.getPath('userData'), 'dashboard.json');
 
 function loadConfig() {
+  const file = configPath();
+  let raw;
   try {
-    const loaded = { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(configPath(), 'utf8')) };
+    raw = fs.readFileSync(file, 'utf8');
+  } catch {
+    return JSON.parse(JSON.stringify(DEFAULT_CONFIG)); // premier lancement
+  }
+  try {
+    const loaded = { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
     // Le theme "blue" a ete remplace par "forest".
     if (loaded.theme === 'blue') loaded.theme = 'forest';
     return loaded;
-  } catch {
+  } catch (err) {
+    // Fichier illisible : on le met de cote plutot que de l'ecraser a la
+    // prochaine sauvegarde, les lignes suivies restent recuperables a la main.
+    try {
+      fs.renameSync(file, `${file}.illisible-${Date.now()}`);
+    } catch {}
+    console.error('config illisible, valeurs par defaut:', err.message);
     return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
   }
 }
 
+/**
+ * Ecriture dans un fichier temporaire puis renommage : une coupure en pleine
+ * ecriture laisse l'ancienne config intacte au lieu d'un JSON tronque.
+ */
 function saveConfig() {
+  const file = configPath();
+  const tmp = `${file}.tmp`;
+  const data = JSON.stringify(config, null, 2);
   try {
-    fs.writeFileSync(configPath(), JSON.stringify(config, null, 2));
-  } catch (err) {
-    console.error('sauvegarde config impossible:', err.message);
+    fs.writeFileSync(tmp, data);
+    fs.renameSync(tmp, file);
+  } catch {
+    // Renommage refuse (antivirus qui tient le fichier, par exemple) : ecriture directe.
+    try {
+      fs.writeFileSync(file, data);
+    } catch (err) {
+      console.error('sauvegarde config impossible:', err.message);
+    }
   }
 }
 
 /* ---------------- fenetre ---------------- */
 
-/** Cible en priorite le petit ecran secondaire (le 6 pouces en 960x640). */
-function pickDisplay() {
-  const all = screen.getAllDisplays();
-  const exact = all.find((d) => d.bounds.width === 960 && d.bounds.height === 640);
-  if (exact) return exact;
-  const small = all
-    .filter((d) => d.bounds.width <= 1100 && d.bounds.height <= 800)
-    .sort((a, b) => a.bounds.width * a.bounds.height - b.bounds.width * b.bounds.height);
-  return small[0] || screen.getPrimaryDisplay();
+/** Ecran a recouvrir (voir display.js), ou null s'il n'est pas branche. */
+function targetDisplay() {
+  return display.findTargetDisplay(screen.getAllDisplays(), screen.getPrimaryDisplay().id, config.display);
+}
+
+/** Fenetre ordinaire de 960 x 640 au centre de l'ecran principal. */
+function centeredOnPrimary() {
+  const wa = screen.getPrimaryDisplay().workArea;
+  const width = Math.min(960, wa.width);
+  const height = Math.min(640, wa.height);
+  return {
+    x: Math.round(wa.x + (wa.width - width) / 2),
+    y: Math.round(wa.y + (wa.height - height) / 2),
+    width,
+    height,
+  };
+}
+
+function initialBounds() {
+  const d = config.coverTaskbar ? targetDisplay() : null;
+  if (d) return d.bounds;
+  const b = config.bounds;
+  return b && display.isOnScreen(screen.getAllDisplays(), b) ? b : centeredOnPrimary();
 }
 
 function createWindow() {
-  const target = pickDisplay();
-  const b = config.bounds || target.bounds;
+  const b = initialBounds();
 
   mainWindow = new BrowserWindow({
     x: b.x,
     y: b.y,
     width: b.width,
     height: b.height,
+    show: false,             // affichee par placeWindow(), une fois son ecran connu
     frame: false,            // pas de bandeau de fenetre
     resizable: true,
     skipTaskbar: true,       // presente dans la zone de notifications, pas la barre des taches
@@ -108,7 +150,7 @@ function createWindow() {
   });
 
   mainWindow.loadFile('index.html');
-  if (config.coverTaskbar) applyCoverTaskbar(true);
+  placeWindow(true);
 
   // 'resize' et 'move' se declenchent des dizaines de fois par seconde pendant
   // un glisser : ecrire le fichier a chaque evenement, c'etait des centaines
@@ -142,6 +184,16 @@ function createWindow() {
 
 function showWindow() {
   if (!mainWindow) return;
+  if (config.coverTaskbar && !targetDisplay()) {
+    // Affichage demande alors que l'ecran du tableau de bord est absent :
+    // fenetre ordinaire sur l'ecran principal, sans le recouvrir. Elle
+    // rejoindra son ecran quand il reviendra (onDisplaysChanged).
+    awaitingDisplay = false;
+    mainWindow.setAlwaysOnTop(false);
+    mainWindow.setBounds(centeredOnPrimary());
+    mainWindow.show();
+    return;
+  }
   mainWindow.show();
   // Le niveau doit etre reaffirme apres un show(), sinon Windows repose la
   // fenetre sous la barre des taches.
@@ -194,41 +246,94 @@ function createTray() {
   tray.on('click', toggleWindow);
 }
 
+/* ---------------- placement sur l'ecran ---------------- */
+
+// Vrai quand la fenetre est masquee parce que son ecran manque : elle
+// reapparait d'elle-meme a son retour. Masquee par l'utilisateur, elle le reste.
+let awaitingDisplay = false;
+
 /**
- * Le niveau 'screen-saver' est le seul qui passe au-dessus de la barre des
- * taches Windows ; on recale aussi la fenetre sur les bounds PHYSIQUES de
- * l'ecran (et non sur workArea, qui exclut justement la barre).
+ * Recale la fenetre sur son ecran. En mode recouvrement, le niveau
+ * 'screen-saver' est le seul qui passe au-dessus de la barre des taches
+ * Windows, et la fenetre prend les bounds PHYSIQUES de l'ecran (workArea
+ * exclut justement la barre). Si cet ecran est absent (pas encore detecte a
+ * l'ouverture de session, debranche), la fenetre est masquee : recouvrir
+ * l'ecran principal au premier plan le rendrait inutilisable.
+ *
+ * @param {boolean} reveal la fenetre doit etre visible (demarrage) ; sinon sa
+ *   visibilite actuelle est conservee.
  */
-function applyCoverTaskbar(on) {
+function placeWindow(reveal = false) {
   if (!mainWindow) return;
-  if (on) {
-    const d = pickDisplay();
-    mainWindow.setBounds(d.bounds);
-    mainWindow.setAlwaysOnTop(true, 'screen-saver');
-  } else {
+  const wantVisible = reveal || awaitingDisplay || mainWindow.isVisible();
+  if (!config.coverTaskbar) {
+    awaitingDisplay = false;
     mainWindow.setAlwaysOnTop(false);
+    if (wantVisible) mainWindow.show();
+    return;
   }
+  const d = targetDisplay();
+  if (!d) {
+    mainWindow.hide();
+    awaitingDisplay = wantVisible;
+    return;
+  }
+  awaitingDisplay = false;
+  mainWindow.setBounds(d.bounds);
+  if (wantVisible) showWindow();
+  else mainWindow.setAlwaysOnTop(true, 'screen-saver');
+}
+
+// Un branchement d'ecran produit une rafale d'evenements : on attend la fin.
+let displayTimer;
+function onDisplaysChanged() {
+  clearTimeout(displayTimer);
+  displayTimer = setTimeout(() => placeWindow(), 500);
 }
 
 /* ---------------- marches ---------------- */
 
+// Derniere cotation reussie par ligne ({ price, change24h, at }) : une source en
+// panne laisse affiche le dernier cours connu, grise, au lieu de "--".
+const lastGood = new Map();
+let marketsBusy = false;
+let marketsAgain = false;
+
 async function refreshMarkets() {
   if (!mainWindow) return;
+  // Un cycle a la fois ; une demande pendant un cycle (ligne ajoutee) en relance
+  // un juste apres.
+  if (marketsBusy) { marketsAgain = true; return; }
+  marketsBusy = true;
   try {
-    const quotes = await markets.getQuotes(config.items);
-    mainWindow.webContents.send('quotes', {
-      quotes,
-      items: config.items,
-      updatedAt: Date.now(),
-      error: null,
-    });
-  } catch (err) {
-    mainWindow.webContents.send('quotes', {
-      quotes: null,
-      items: config.items,
-      updatedAt: Date.now(),
-      error: err.message,
-    });
+    let quotes = {};
+    let errors;
+    try {
+      ({ quotes, errors } = await markets.getQuotes(config.items));
+    } catch (err) {
+      errors = [err.message];
+    }
+    const now = Date.now();
+    for (const [key, q] of Object.entries(quotes)) {
+      if (q.price != null) lastGood.set(key, { ...q, at: now });
+    }
+    const out = {};
+    for (const it of config.items) {
+      const key = markets.keyOf(it);
+      out[key] = lastGood.get(key) || { price: null, change24h: null, at: null };
+    }
+    if (mainWindow) {
+      mainWindow.webContents.send('quotes', {
+        quotes: out,
+        updatedAt: now,
+        errors,
+        // Au-dela, un cours est juge perime : trois cycles rates, deux minutes au moins.
+        staleMs: Math.max(3 * config.refreshMs, 120000),
+      });
+    }
+  } finally {
+    marketsBusy = false;
+    if (marketsAgain) { marketsAgain = false; refreshMarkets(); }
   }
 }
 
@@ -263,7 +368,9 @@ function readUpdateToken() {
 async function checkForUpdates({ manual = false } = {}) {
   let update;
   try {
-    update = await updates.findUpdate(APP_VERSION, readUpdateToken());
+    // L'archive de l'appli ne tourne que sur le moteur pour lequel elle a ete construite.
+    const electronMajor = process.versions.electron.split('.')[0];
+    update = await updates.findUpdate(APP_VERSION, electronMajor, readUpdateToken());
   } catch (err) {
     console.error('verification des mises a jour impossible:', err.message);
     if (manual) dialog.showErrorBox('Vérification impossible', `${err.message}\n\nToken lu dans : ${tokenPath()}`);
@@ -313,23 +420,41 @@ async function installUpdate(update = pendingUpdate) {
   refreshTrayMenu();
   // Sans fenetre parente : la boite s'ouvre sur l'ecran principal, la ou l'on a
   // clique, et non sur le petit ecran du dashboard.
+  const viaInstaller = update.kind === 'installer';
   const { response } = await dialog.showMessageBox({
     type: 'question',
     buttons: ['Mettre à jour', 'Plus tard'],
     defaultId: 0,
     cancelId: 1,
     title: 'Mise à jour Klakboard',
-    message: `Klakboard ${pendingUpdate.version} est disponible (version actuelle : ${APP_VERSION}).`,
-    detail: 'Klakboard va se fermer, se mettre à jour puis se relancer toute seule.',
+    message: `Klakboard ${update.version} est disponible (version actuelle : ${APP_VERSION}).`,
+    detail: viaInstaller
+      ? 'Cette version change le moteur de Klakboard : elle passe par l\'installeur complet. '
+        + 'Klakboard va se fermer et l\'installation s\'ouvrir ; Klakboard se relancera à la fin.'
+      : 'Klakboard va se fermer, se mettre à jour puis se relancer toute seule.',
   });
   if (response !== 0) return;
 
   installing = true;
-  const target = path.join(process.resourcesPath, 'app.asar');
-  const staged = `${target}.new`;
   try {
-    await updates.downloadAsar(pendingUpdate, readUpdateToken(), staged);
-    swapAndRelaunch(staged, target);
+    if (viaInstaller) {
+      // Installeur non signe, mais ecrit par l'appli et non par un navigateur :
+      // sans marque "telecharge d'Internet", SmartScreen ne s'interpose pas.
+      const setup = path.join(os.tmpdir(), update.asset.name);
+      await updates.downloadAsset(update.asset, readUpdateToken(), setup);
+      // On ne quitte qu'une fois l'installeur effectivement lance.
+      await new Promise((resolve, reject) => {
+        const child = spawn(setup, [], { detached: true, stdio: 'ignore' });
+        child.once('spawn', resolve);
+        child.once('error', reject);
+        child.unref();
+      });
+    } else {
+      const target = path.join(process.resourcesPath, 'app.asar');
+      const staged = `${target}.new`;
+      await updates.downloadAsset(update.asset, readUpdateToken(), staged);
+      swapAndRelaunch(staged, target);
+    }
     quitApp();
   } catch (err) {
     installing = false;
@@ -358,6 +483,17 @@ app.whenReady().then(() => {
   // Filet de securite : sans bandeau de fenetre et au-dessus de la barre des
   // taches, un rendu plante laisserait une fenetre impossible a fermer.
   globalShortcut.register('CommandOrControl+Shift+Q', quitApp);
+
+  screen.on('display-added', onDisplaysChanged);
+  screen.on('display-removed', onDisplaysChanged);
+  screen.on('display-metrics-changed', onDisplaysChanged);
+
+  // Au reveil, cours et meteo datent de la mise en veille : on n'attend pas
+  // le prochain cycle.
+  powerMonitor.on('resume', () => {
+    refreshMarkets();
+    refreshWeather();
+  });
 
   mainWindow.webContents.once('did-finish-load', () => {
     mainWindow.webContents.setZoomFactor(config.zoom || 1);
@@ -439,18 +575,25 @@ ipcMain.handle('get-displays', () => {
 ipcMain.handle('snap-to-display', (_e, displayId) => {
   if (!mainWindow) return config;
   const d = screen.getAllDisplays().find((x) => x.id === displayId) || screen.getPrimaryDisplay();
-  // bounds et non workArea : workArea exclut justement la barre des taches.
-  mainWindow.setBounds(d.bounds);
-  mainWindow.setAlwaysOnTop(true, 'screen-saver');
+  // Retenu pour les demarrages suivants : sans cela, l'appli revenait toujours
+  // sur le petit ecran, quel que soit le choix fait ici.
+  config.display = display.displayKey(d);
   config.coverTaskbar = true;
   config.bounds = d.bounds;
   saveConfig();
+  placeWindow();
   return config;
 });
 
-/** Taille fenetree, ancree sur l'ecran courant et bornee a sa surface. */
+/**
+ * Taille fenetree, ancree sur l'ecran courant et bornee a sa surface. Passe en
+ * mode fenetre : en mode recouvrement, la fenetre reprendrait tout l'ecran au
+ * prochain demarrage ou changement d'ecran.
+ */
 ipcMain.handle('set-resolution', (_e, { width, height }) => {
   if (!mainWindow) return config;
+  config.coverTaskbar = false;
+  mainWindow.setAlwaysOnTop(false);
   const d = screen.getDisplayMatching(mainWindow.getBounds());
   const w = Math.min(width, d.bounds.width);
   const h = Math.min(height, d.bounds.height);
@@ -512,8 +655,13 @@ ipcMain.handle('set-zoom', (_e, z) => {
 
 ipcMain.handle('set-cover-taskbar', (_e, on) => {
   config.coverTaskbar = !!on;
+  // Aucun ecran choisi ni petit ecran detecte : on recouvre celui ou se trouve
+  // la fenetre, plutot que de la masquer.
+  if (config.coverTaskbar && mainWindow && !targetDisplay()) {
+    config.display = display.displayKey(screen.getDisplayMatching(mainWindow.getBounds()));
+  }
   saveConfig();
-  applyCoverTaskbar(config.coverTaskbar);
+  placeWindow();
   return config;
 });
 

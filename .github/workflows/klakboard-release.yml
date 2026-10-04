@@ -1,11 +1,12 @@
 # Release Klakboard, executee par le runner auto-heberge de l'orga LokLakh-s.
 #
 # A chaque push sur main touchant Windows/Klakboard, si "version" dans package.json
-# n'a pas encore de release klakboard-v<version>, construit dans un conteneur
-# electron-builder (Wine inclus, l'hote n'a besoin que de Docker) :
+# n'a pas encore de release klakboard-v<version>, lance les tests puis construit
+# dans un conteneur electron-builder (Wine inclus, l'hote n'a besoin que de Docker) :
 #   - l'installeur NSIS (premiere installation, changement de version d'Electron)
-#   - app.asar (mise a jour depuis l'appli)
+#   - app-electron<majeure>.asar (mise a jour depuis l'appli, sur ce moteur seulement)
 # puis publie la release, taguee sur le commit construit.
+# Un push force (historique reecrit) ne declenche pas ce workflow : le lancer a la main.
 name: Klakboard release
 
 on:
@@ -51,7 +52,7 @@ jobs:
       # a root et le checkout suivant ne peut plus nettoyer le workspace. HOME pointe
       # dans le cache de l'hote : Wine exige un HOME possede par l'utilisateur, et le
       # prefixe Wine y est conserve d'un build a l'autre.
-      - name: Build (electron-builder + Wine, en conteneur)
+      - name: Tests et build (electron-builder + Wine, en conteneur)
         if: steps.ver.outputs.exists == 'false'
         run: |
           CACHE="$HOME/.cache/klakboard-build"
@@ -61,7 +62,7 @@ jobs:
             -e ELECTRON_CACHE=/cache/electron -e ELECTRON_BUILDER_CACHE=/cache/electron-builder \
             -v "$PWD":/project -w /project -v "$CACHE":/cache \
             electronuserland/builder:wine \
-            bash -c "npm install --no-audit --no-fund && npx electron-builder --win --publish never"
+            bash -c "npm ci --no-audit --no-fund && npm test && npx electron-builder --win --publish never"
 
       - name: Publier la release
         if: steps.ver.outputs.exists == 'false'
@@ -74,11 +75,17 @@ jobs:
             const fs = require('fs');
             const path = require('path');
             const { VERSION, TAG } = process.env;
-            const dist = path.join(process.env.GITHUB_WORKSPACE, 'Windows/Klakboard/dist');
+            const app = path.join(process.env.GITHUB_WORKSPACE, 'Windows/Klakboard');
+            const dist = path.join(app, 'dist');
+            // L'archive ne tourne que sur le moteur qui l'a construite : son nom
+            // porte la version majeure d'Electron, et l'appli n'installe que la sienne.
+            const electronMajor = require(path.join(app, 'node_modules/electron/package.json')).version.split('.')[0];
             const assets = [
               [`Klakboard Setup ${VERSION}.exe`, `Klakboard.Setup.${VERSION}.exe`],
-              ['win-unpacked/resources/app.asar', 'app.asar'],
+              ['win-unpacked/resources/app.asar', `app-electron${electronMajor}.asar`],
             ];
+            // Les versions <= 1.2.5 ne cherchent que "app.asar" (et tournent sur Electron 33).
+            if (electronMajor === '33') assets.push(['win-unpacked/resources/app.asar', 'app.asar']);
             for (const [file] of assets) {
               if (!fs.existsSync(path.join(dist, file))) core.setFailed(`Artefact manquant : ${file}`);
             }
@@ -89,7 +96,7 @@ jobs:
               tag_name: TAG,
               target_commitish: context.sha,
               name: `Klakboard ${VERSION}`,
-              body: `Klakboard ${VERSION}. Mise a jour depuis l'appli : clic droit sur l'icone de la zone de notifications.`,
+              body: `Klakboard ${VERSION} (Electron ${electronMajor}). Mise a jour depuis l'appli : clic droit sur l'icone de la zone de notifications.`,
             });
             for (const [file, name] of assets) {
               await github.rest.repos.uploadReleaseAsset({
