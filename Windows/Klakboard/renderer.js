@@ -58,7 +58,7 @@ function renderMarkets() {
   rowCells.clear();
 
   if (!config.items.length) {
-    wrap.innerHTML = '<p class="emptyHint">Aucune ligne suivie.<br>Touchez + pour en ajouter.</p>';
+    wrap.innerHTML = '<p class="emptyHint">Aucune ligne suivie.<br>Clic droit sur l’icône Klakboard → Ajouter une ligne…</p>';
     return;
   }
 
@@ -353,7 +353,7 @@ function drawNetSpark() {
 /* ---------------- courbe ---------------- */
 
 let chartItem = null;
-let chartRange = '7d';
+let chartRange = '1w';
 
 function drawChart(points, up) {
   const area = $('chartArea');
@@ -433,13 +433,13 @@ async function loadChart() {
 
 function openChart(item) {
   chartItem = item;
-  chartRange = '7d';
+  chartRange = '1w';
   $('chTitle').textContent = labelOf(item);
   const q = lastQuotes[keyOf(item)];
   $('chPrice').textContent = q ? fmtPrice(q.price) : '--';
   $('chChange').textContent = '';
   document.querySelectorAll('#ranges .chip').forEach((c) =>
-    c.classList.toggle('active', c.dataset.range === '7d')
+    c.classList.toggle('active', c.dataset.range === '1w')
   );
   $('chartOv').hidden = false;
   requestAnimationFrame(loadChart);

@@ -148,9 +148,14 @@ html, body {
 
 .mScroll { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 
-/* ---- meteo : remplit l'espace libre sous les badges ---- */
+/* ---- meteo : remplit l'espace libre sous les badges ----
+   Sa hauteur vient de l'espace restant (container-type: size), pas de son
+   contenu : avec trois rangees de badges ou un zoom pousse, la carte se
+   compacte au lieu de reduire les badges a une zone a faire defiler. */
 .weather {
-  flex: 1 0 auto; min-height: 9rem;
+  flex: 1 1 0; min-height: 9rem;
+  container-type: size;
+  overflow: hidden;
   display: flex; flex-direction: column; gap: 0.35rem;
   margin: 0.2rem 0.4rem 0.4rem;
   padding: 0.5rem 0.7rem 0.6rem;
@@ -180,30 +185,50 @@ html, body {
 
 .wStats { display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 0.8rem; }
 .wStat { display: flex; flex-direction: column; min-width: 0; }
-.wLbl { font-size: 1.35rem; color: var(--faint); white-space: nowrap; }
-.wVal { font-size: 1.7rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wLbl { font-size: min(1.35rem, 4.1cqi); color: var(--faint); white-space: nowrap; }
+.wVal { font-size: min(1.7rem, 5.2cqi); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wVal.warn { color: var(--warn); }
 .wVal.alert { color: var(--down); }
 
+/* Paliers compacts, quand la carte n'a plus sa hauteur naturelle (trois
+   rangees de badges, zoom pousse) : icone et temperature reduites et
+   ressenti masque, puis en-tete masque (la carte entiere reste cliquable).
+   Les statistiques suivent la largeur (cqi) pour ne pas se chevaucher
+   au-dela de 115 %. */
+@container (max-height: 13.5rem) {
+  .wIcon { width: 6rem; height: 6rem; margin: -0.8rem -0.4rem -0.8rem -0.7rem; }
+  .wTemp { font-size: 2.8rem; }
+  .wReading { gap: 0.1rem; }
+  .wFeels { display: none; }
+}
+@container (max-height: 10rem) {
+  .wHead { display: none; }
+}
+
 .emptyHint { padding: 1.4rem 0.8rem; text-align: center; color: var(--faint); font-size: 1.15rem; }
 
-/* ---- badges (metaux et cryptos) ----
-   auto-fill plutot qu'un nombre fixe de colonnes : deux par ligne a 960 px,
-   une seule si la fenetre est reduite ou le zoom pousse. */
+/* ---- badges (metaux, devises, cryptos) ----
+   Toujours trois par ligne. En auto-fill, la 3e colonne ne tenait a 960 px
+   qu'a 5 px pres : la barre de defilement (des qu'une 3e rangee deborde) ou
+   un zoom de 115 % la faisaient tomber. Le texte se reduit donc avec la
+   largeur du badge (unites cqi) au lieu de perdre une colonne ; les plafonds
+   en rem restent les tailles de reference a 960 px et 100 %. */
 .badges {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.3rem;
   padding: 0.35rem 0.4rem;
 }
 
 .badge {
+  container-type: inline-size;
   position: relative;
   background: var(--panel);
   border: 1px solid var(--line);
   border-left: 3px solid var(--faint);
   border-radius: 0.4rem;
   padding: 0.3rem 0.5rem 0.35rem;
+  line-height: 1.15;
   cursor: pointer;
   transition: background .12s, border-color .3s;
 }
@@ -212,15 +237,17 @@ html, body {
 .badge.up { border-left-color: var(--up); }
 .badge.down { border-left-color: var(--down); }
 
-.bTop { display: flex; align-items: baseline; gap: 0.3rem; padding-right: 1.4rem; }
-.bSym { font-size: 1.5rem; font-weight: 700; letter-spacing: .2px; }
+/* Pas de marge reservee au bouton de retrait : il n'apparait qu'au survol et
+   recouvre alors la fin du libelle ("Palladium" n'aurait pas tenu sinon). */
+.bTop { display: flex; align-items: baseline; gap: 0.3rem; }
+.bSym { font-size: min(1.5rem, 15cqi); font-weight: 700; letter-spacing: .2px; }
 .bVs {
-  font-size: 1.3rem; color: var(--faint);
+  font-size: min(1.3rem, 13cqi); color: var(--faint);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
 .bPrice {
-  font-size: 1.65rem; font-weight: 700; margin-top: 0.05rem;
+  font-size: min(1.65rem, 16.5cqi); font-weight: 700; margin-top: 0.05rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   border-radius: 0.2rem;
@@ -231,7 +258,7 @@ html, body {
 
 .bChg {
   display: inline-block; margin-top: 0.1rem;
-  font-size: 1.4rem; font-weight: 700;
+  font-size: min(1.4rem, 14cqi); font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--faint);
   background: color-mix(in srgb, var(--txt) 9%, transparent);
@@ -245,11 +272,11 @@ html, body {
   position: absolute; top: 0.15rem; right: 0.15rem;
   width: 1.6rem; height: 1.6rem;
   border: none; border-radius: 0.25rem;
-  background: transparent; color: var(--faint);
+  background: var(--hover); color: var(--faint);
   font-size: 1rem; cursor: pointer; opacity: 0;
   transition: opacity .15s, background .15s, color .15s;
 }
-.bRm:hover { background: color-mix(in srgb, var(--down) 22%, transparent); color: var(--down); }
+.bRm:hover { background: color-mix(in srgb, var(--down) 22%, var(--hover)); color: var(--down); }
 
 /* ================= colonne systeme ================= */
 
