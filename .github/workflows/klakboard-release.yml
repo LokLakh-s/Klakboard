@@ -62,7 +62,7 @@ jobs:
             -e ELECTRON_CACHE=/cache/electron -e ELECTRON_BUILDER_CACHE=/cache/electron-builder \
             -v "$PWD":/project -w /project -v "$CACHE":/cache \
             electronuserland/builder:wine \
-            bash -c "npm ci --no-audit --no-fund && npm test && npx electron-builder --win --publish never"
+            bash -c "node --version && npm ci --no-audit --no-fund && npm test && npx electron-builder --win --publish never"
 
       - name: Publier la release
         if: steps.ver.outputs.exists == 'false'
