@@ -1,0 +1,66 @@
+# Workflow de release Klakboard. A placer dans <racine du depot>/.github/workflows/
+# (GitHub ne lit que la racine du depot ; le projet vit dans Windows/Klakboard).
+#
+# A chaque push sur main touchant Klakboard, si "version" dans package.json n'a pas
+# encore de release klakboard-v<version>, le runner Windows construit :
+#   - l'installeur NSIS (premiere installation, reinstallation)
+#   - app.asar (mise a jour depuis l'appli)
+# et publie la release. Aucune commande a lancer en local.
+name: Klakboard release
+
+on:
+  push:
+    branches: [main]
+    paths: ['Windows/Klakboard/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: Windows/Klakboard
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Lire la version et verifier qu'elle est nouvelle
+        id: ver
+        run: |
+          $v = node -p "require('./package.json').version"
+          $tag = "klakboard-v$v"
+          gh release view $tag -R $env:GITHUB_REPOSITORY *> $null
+          $exists = ($LASTEXITCODE -eq 0)
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "exists=$exists" >> $env:GITHUB_OUTPUT
+
+      - name: Installer les dependances
+        if: steps.ver.outputs.exists == 'False'
+        run: npm install
+
+      - name: Construire installeur et app.asar
+        if: steps.ver.outputs.exists == 'False'
+        run: |
+          npx electron-builder --win --publish never
+          npx electron-builder --win --dir --publish never
+
+      - name: Publier la release
+        if: steps.ver.outputs.exists == 'False'
+        run: |
+          $tag = "${{ steps.ver.outputs.tag }}"
+          $v = node -p "require('./package.json').version"
+          gh release create $tag `
+            "dist/Klakboard Setup $v.exe" `
+            "dist/win-unpacked/resources/app.asar" `
+            -R $env:GITHUB_REPOSITORY `
+            --title "Klakboard $v" `
+            --notes "Klakboard $v. Mise a jour depuis l'appli (clic droit sur l'icone de la zone de notifications)."

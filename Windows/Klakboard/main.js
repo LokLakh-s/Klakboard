@@ -1,9 +1,14 @@
-const { app, BrowserWindow, ipcMain, screen, globalShortcut, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, Tray, Menu, nativeImage, shell, dialog, Notification } = require('electron');
+const { spawn } = require('child_process');
+const os = require('os');
 const path = require('path');
 const fs = require('fs');
 
 const markets = require('./markets');
 const system = require('./system');
+const weather = require('./weather');
+const updates = require('./updates');
+const { version: APP_VERSION } = require('./package.json');
 
 /* ---------------- configuration ---------------- */
 
@@ -33,6 +38,8 @@ const THEME_BG = {
 let config;
 let mainWindow;
 let marketTimer;
+let weatherTimer;
+let pendingUpdate = null;
 let tray;
 let totalsDirty = false;
 // Distingue une vraie sortie d'une simple mise en veilleuse dans la zone de
@@ -130,29 +137,50 @@ function createWindow() {
 
 /* ---------------- zone de notifications ---------------- */
 
+function showWindow() {
+  if (!mainWindow) return;
+  mainWindow.show();
+  // Le niveau doit etre reaffirme apres un show(), sinon Windows repose la
+  // fenetre sous la barre des taches.
+  if (config.coverTaskbar) mainWindow.setAlwaysOnTop(true, 'screen-saver');
+}
+
 function toggleWindow() {
   if (!mainWindow) return;
-  if (mainWindow.isVisible()) {
-    mainWindow.hide();
-  } else {
-    mainWindow.show();
-    // Le niveau doit etre reaffirme apres un show(), sinon Windows repose la
-    // fenetre sous la barre des taches.
-    if (config.coverTaskbar) mainWindow.setAlwaysOnTop(true, 'screen-saver');
+  if (mainWindow.isVisible()) mainWindow.hide();
+  else showWindow();
+}
+
+/** Ouvre un panneau (settings ou add) dans la fenetre, depuis le menu de la zone de notifications. */
+function openPanel(name) {
+  showWindow();
+  if (mainWindow) mainWindow.webContents.send('open-panel', name);
+}
+
+function buildTrayMenu() {
+  const template = [
+    { label: 'Afficher / masquer', click: toggleWindow },
+    { label: 'Rafraîchir les cours', click: refreshMarkets },
+    { label: 'Ajouter une ligne…', click: () => openPanel('add') },
+    { label: 'Réglages…', click: () => openPanel('settings') },
+  ];
+  if (pendingUpdate) {
+    template.push({ type: 'separator' });
+    template.push({ label: `Installer la mise à jour ${pendingUpdate.version}…`, click: installUpdate });
   }
+  template.push({ type: 'separator' }, { label: 'Quitter Klakboard', click: quitApp });
+  return Menu.buildFromTemplate(template);
+}
+
+function refreshTrayMenu() {
+  if (tray) tray.setContextMenu(buildTrayMenu());
 }
 
 function createTray() {
   const icon = nativeImage.createFromPath(path.join(__dirname, 'build', 'icon.ico'));
   tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
   tray.setToolTip('Klakboard');
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: 'Afficher / masquer', click: toggleWindow },
-      { type: 'separator' },
-      { label: 'Quitter Klakboard', click: quitApp },
-    ])
-  );
+  refreshTrayMenu();
   tray.on('click', toggleWindow);
 }
 
@@ -199,6 +227,89 @@ function restartMarketTimer() {
   marketTimer = setInterval(refreshMarkets, config.refreshMs);
 }
 
+/* ---------------- meteo ---------------- */
+
+async function refreshWeather() {
+  if (!mainWindow) return;
+  try {
+    mainWindow.webContents.send('weather', { data: await weather.getWeather(), error: null });
+  } catch (err) {
+    mainWindow.webContents.send('weather', { data: null, error: err.message });
+  }
+}
+
+/* ---------------- mises a jour ---------------- */
+
+const tokenPath = () => path.join(app.getPath('userData'), 'github-token.txt');
+
+function readUpdateToken() {
+  try {
+    return fs.readFileSync(tokenPath(), 'utf8').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function checkForUpdates() {
+  try {
+    const update = await updates.findUpdate(APP_VERSION, readUpdateToken());
+    if (!update || (pendingUpdate && pendingUpdate.version === update.version)) return;
+    pendingUpdate = update;
+    refreshTrayMenu();
+    if (Notification.isSupported()) {
+      new Notification({
+        title: 'Klakboard',
+        body: `Version ${update.version} disponible — clic droit sur l'icône pour installer.`,
+      }).show();
+    }
+  } catch (err) {
+    console.error('verification des mises a jour impossible:', err.message);
+  }
+}
+
+/**
+ * Remplace resources/app.asar par la nouvelle version. Le fichier courant est
+ * verrouille tant que l'appli tourne : un script .cmd attend la fin du process,
+ * remplace le fichier, puis relance Klakboard.
+ */
+function swapAndRelaunch(staged, target) {
+  const script = path.join(os.tmpdir(), 'klakboard-update.cmd');
+  fs.writeFileSync(script, [
+    '@echo off',
+    ':wait',
+    `tasklist /FI "PID eq ${process.pid}" 2>nul | find "${process.pid}" >nul`,
+    'if not errorlevel 1 (ping -n 2 127.0.0.1 >nul & goto wait)',
+    `move /Y "${staged}" "${target}"`,
+    `start "" "${process.execPath}"`,
+    'del "%~f0"',
+  ].join('\r\n'));
+  spawn('cmd.exe', ['/c', script], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+}
+
+async function installUpdate() {
+  if (!pendingUpdate) return;
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'question',
+    buttons: ['Mettre à jour', 'Plus tard'],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'Mise à jour Klakboard',
+    message: `Klakboard ${pendingUpdate.version} est disponible (version actuelle : ${APP_VERSION}).`,
+    detail: 'Klakboard va se fermer, se mettre à jour puis se relancer toute seule.',
+  });
+  if (response !== 0) return;
+
+  const target = path.join(process.resourcesPath, 'app.asar');
+  const staged = `${target}.new`;
+  try {
+    await updates.downloadAsar(pendingUpdate, readUpdateToken(), staged);
+    swapAndRelaunch(staged, target);
+    quitApp();
+  } catch (err) {
+    dialog.showErrorBox('Mise à jour impossible', err.message);
+  }
+}
+
 /* ---------------- cycle de vie ---------------- */
 
 app.whenReady().then(() => {
@@ -214,6 +325,12 @@ app.whenReady().then(() => {
     mainWindow.webContents.setZoomFactor(config.zoom || 1);
     refreshMarkets();
     restartMarketTimer();
+
+    refreshWeather();
+    weatherTimer = setInterval(refreshWeather, 15 * 60 * 1000);
+
+    setTimeout(checkForUpdates, 8000);
+    setInterval(checkForUpdates, 6 * 60 * 60 * 1000);
 
     system.start((sample) => {
       // Les cumuls reseau s'accumulent a partir des deltas : les compteurs de
@@ -243,6 +360,7 @@ app.on('before-quit', () => {
   isQuitting = true;
   system.stop();
   if (marketTimer) clearInterval(marketTimer);
+  if (weatherTimer) clearInterval(weatherTimer);
   saveConfig();
 });
 
@@ -253,8 +371,6 @@ ipcMain.handle('get-catalogs', () => ({
   metals: markets.METALS,
   fxCurrencies: markets.FX_CURRENCIES,
 }));
-
-ipcMain.handle('force-refresh', () => refreshMarkets());
 
 ipcMain.handle('set-refresh', (_e, ms) => {
   config.refreshMs = ms;
@@ -403,10 +519,4 @@ ipcMain.handle('reset-net-totals', () => {
   return config.netTotals;
 });
 
-/* La croix de l'en-tete met en veilleuse ; on quitte par la zone de
-   notifications ou par Ctrl+Shift+Q. */
-ipcMain.handle('hide-window', () => {
-  if (mainWindow) mainWindow.hide();
-});
-
-ipcMain.handle('quit-app', quitApp);
+ipcMain.handle('open-weather-map', () => shell.openExternal(weather.CARD_URL));

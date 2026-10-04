@@ -10,17 +10,37 @@
 
     <!-- ================= colonne marches ================= -->
     <section class="markets">
-      <header class="mHead">
-        <span class="dot" id="statusDot"></span>
-        <span class="stamp" id="stamp">connexion...</span>
-        <div class="headBtns">
-          <button class="iBtn" id="refreshBtn" title="Rafraîchir">&#8635;</button>
-          <button class="iBtn" id="addBtn" title="Ajouter une ligne">&#43;</button>
-          <button class="iBtn" id="setBtn" title="Réglages">&#9881;</button>
-          <button class="iBtn danger" id="quitBtn" title="Masquer dans la zone de notifications">&#10005;</button>
+      <header class="topBar">
+        <div class="dateBlock">
+          <span class="dot" id="statusDot"></span>
+          <div class="dateText">
+            <span class="dateDay" id="dateDay">--</span>
+            <span class="dateFull" id="dateFull">--</span>
+          </div>
         </div>
+        <span class="clockTime" id="clockTime">--:--:--</span>
       </header>
       <div class="mScroll" id="mScroll"></div>
+      <section class="weather" id="weather" role="button" tabindex="0" title="Ouvrir la carte météo">
+        <div class="wHead">
+          <span class="wPlace">Météo · Paris (75)</span>
+          <span class="wOpen">Carte &#8599;</span>
+        </div>
+        <div class="wMain">
+          <span class="wIcon" id="wIcon"></span>
+          <span class="wTemp" id="wTemp">--</span>
+          <div class="wSide">
+            <span class="wDesc" id="wDesc">--</span>
+            <span class="wFeels" id="wFeels">--</span>
+          </div>
+        </div>
+        <div class="wStats">
+          <div class="wStat"><span class="wLbl">Min / max</span><span class="wVal" id="wMinMax">--</span></div>
+          <div class="wStat"><span class="wLbl" id="wRainLbl">Pluie</span><span class="wVal" id="wRain">--</span></div>
+          <div class="wStat"><span class="wLbl" id="wWindLbl">Vent</span><span class="wVal" id="wWind">--</span></div>
+          <div class="wStat"><span class="wLbl">Orage</span><span class="wVal" id="wStorm">--</span></div>
+        </div>
+      </section>
     </section>
 
     <!-- ================= colonne systeme ================= -->

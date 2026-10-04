@@ -149,7 +149,7 @@ function applyQuotes(quotes) {
 }
 
 /* L'heure de mise a jour des marches migre sur l'infobulle de la pastille :
-   le bandeau affiche desormais la date et l'heure courantes. */
+   l'horloge courante vit desormais en pied de colonne (gros, lisible). */
 window.dash.onQuotes((d) => {
   const dot = $('statusDot');
   if (d.error) {
@@ -167,8 +167,9 @@ window.dash.onQuotes((d) => {
 
 function tickClock() {
   const d = new Date();
-  const date = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
-  $('stamp').textContent = `${date} · ${d.toLocaleTimeString('fr-FR')}`;
+  $('clockTime').textContent = d.toLocaleTimeString('fr-FR');
+  $('dateDay').textContent = d.toLocaleDateString('fr-FR', { weekday: 'long' });
+  $('dateFull').textContent = d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 tickClock();
 setInterval(tickClock, 1000);
@@ -467,24 +468,23 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') document.querySelectorAll('.ov').forEach(close);
 });
 
-/* ---------------- barre du haut ---------------- */
+/* ---------------- panneaux (menu de la zone de notifications) ---------------- */
 
-$('refreshBtn').addEventListener('click', (e) => {
-  e.currentTarget.classList.add('spin');
-  setTimeout(() => e.currentTarget.classList.remove('spin'), 700);
-  window.dash.forceRefresh();
-});
-
-$('quitBtn').addEventListener('click', () => window.dash.hide());
-$('setBtn').addEventListener('click', async () => {
+async function openSettings() {
   syncSettings();
   buildDisplayList();
   $('setOv').hidden = false;
   // Relu depuis l'OS a chaque ouverture : l'entree a pu etre desactivee
   // entre-temps depuis le Gestionnaire des taches.
   $('autoTgl').checked = await window.dash.getAutoLaunch();
-});
-$('addBtn').addEventListener('click', () => { buildMetalPicker(); $('addOv').hidden = false; });
+}
+
+function openAdd() {
+  buildMetalPicker();
+  $('addOv').hidden = false;
+}
+
+window.dash.onOpenPanel((name) => (name === 'add' ? openAdd() : openSettings()));
 
 $('purgeBtn').addEventListener('click', async () => {
   await window.dash.resetNetTotals();
@@ -665,4 +665,49 @@ $('cSearch').addEventListener('input', (e) => {
 
 window.addEventListener('resize', () => {
   if (!$('chartOv').hidden) loadChart();
+});
+
+/* ---------------- meteo ---------------- */
+
+const STORM_CLASS = { faible: '', possible: 'warn', fort: 'alert' };
+
+const SVG_OPEN = '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">';
+const CLOUD = 'M20 46 H45 A10 10 0 0 0 45 26 A14 14 0 0 0 19 23 A9 9 0 0 0 20 46 Z';
+const SUN = '<circle cx="24" cy="24" r="9"/><path d="M24 6v4M24 38v4M6 24h4M38 24h4M11.5 11.5l2.8 2.8M33.7 33.7l2.8 2.8M11.5 36.5l2.8-2.8M33.7 14.3l2.8-2.8"/>';
+const WX_ICONS = {
+  sun: `${SVG_OPEN}${SUN}</svg>`,
+  partly: `${SVG_OPEN}${SUN}<path d="${CLOUD}"/></svg>`,
+  cloud: `${SVG_OPEN}<path d="${CLOUD}"/></svg>`,
+  fog: `${SVG_OPEN}<path d="M10 24h44M14 34h36M10 44h44"/></svg>`,
+  rain: `${SVG_OPEN}<path d="${CLOUD}"/><path d="M22 52l-2 5M32 52l-2 5M42 52l-2 5"/></svg>`,
+  snow: `${SVG_OPEN}<path d="${CLOUD}"/><path d="M22 52h.01M32 52h.01M42 52h.01M27 58h.01M37 58h.01"/></svg>`,
+  storm: `${SVG_OPEN}<path d="${CLOUD}"/><path d="M34 40l-6 9h7l-5 9"/></svg>`,
+};
+
+function renderWeather(d) {
+  const icon = $('wIcon');
+  icon.innerHTML = WX_ICONS[d.icon] || WX_ICONS.cloud;
+  icon.className = `wIcon ${d.icon}`;
+  $('wTemp').textContent = `${Math.round(d.temp)}°`;
+  $('wDesc').textContent = d.desc;
+  $('wFeels').textContent = `Ressenti ${Math.round(d.feels)}°`;
+  $('wMinMax').textContent = `${Math.round(d.min)}° · ${Math.round(d.max)}°`;
+  $('wRain').textContent = `${d.rainSum} mm`;
+  $('wRainLbl').textContent = `Pluie · ${d.rainProb} %`;
+  $('wWind').textContent = `${d.wind} ${d.windDir}`;
+  $('wWindLbl').textContent = `Vent · raf. ${d.gusts}`;
+  const storm = $('wStorm');
+  storm.textContent = d.storm;
+  storm.className = `wVal ${STORM_CLASS[d.storm]}`;
+}
+
+window.dash.onWeather(({ data, error }) => {
+  if (data) renderWeather(data);
+  else if (error) $('wDesc').textContent = 'Météo indisponible';
+});
+
+const openWeather = () => window.dash.openWeatherMap();
+$('weather').addEventListener('click', openWeather);
+$('weather').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openWeather(); }
 });

@@ -6,7 +6,6 @@ contextBridge.exposeInMainWorld('dash', {
 
   getConfig: () => ipcRenderer.invoke('get-config'),
   getCatalogs: () => ipcRenderer.invoke('get-catalogs'),
-  forceRefresh: () => ipcRenderer.invoke('force-refresh'),
   setRefresh: (ms) => ipcRenderer.invoke('set-refresh', ms),
   setCoverTaskbar: (on) => ipcRenderer.invoke('set-cover-taskbar', on),
   setZoom: (z) => ipcRenderer.invoke('set-zoom', z),
@@ -21,6 +20,7 @@ contextBridge.exposeInMainWorld('dash', {
   getChart: (item, range) => ipcRenderer.invoke('get-chart', { item, range }),
   searchCrypto: (q) => ipcRenderer.invoke('search-crypto', q),
   resetNetTotals: () => ipcRenderer.invoke('reset-net-totals'),
-  hide: () => ipcRenderer.invoke('hide-window'),
-  quit: () => ipcRenderer.invoke('quit-app'),
+  onOpenPanel: (cb) => ipcRenderer.on('open-panel', (_e, name) => cb(name)),
+  onWeather: (cb) => ipcRenderer.on('weather', (_e, d) => cb(d)),
+  openWeatherMap: () => ipcRenderer.invoke('open-weather-map'),
 });
