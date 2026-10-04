@@ -291,27 +291,18 @@ async function checkForUpdates({ manual = false } = {}) {
 
 /**
  * Remplace resources/app.asar par la nouvelle version. Le fichier courant est
- * verrouille tant que l'appli tourne : un script .cmd attend la fin du process,
- * remplace le fichier, puis relance Klakboard.
+ * verrouille tant que l'appli tourne : updater.js (copie hors de l'archive) attend
+ * la fin du process, remplace le fichier puis relance Klakboard.
  */
 function swapAndRelaunch(staged, target) {
-  const script = path.join(os.tmpdir(), 'klakboard-update.cmd');
-  fs.writeFileSync(script, [
-    '@echo off',
-    ':wait',
-    `tasklist /FI "PID eq ${process.pid}" 2>nul | find "${process.pid}" >nul`,
-    'if not errorlevel 1 (ping -n 2 127.0.0.1 >nul & goto wait)',
-    'set n=0',
-    ':move',
-    `move /Y "${staged}" "${target}" >nul 2>&1`,
-    'if not errorlevel 1 goto launch',
-    'set /a n+=1',
-    'if %n% lss 30 (ping -n 2 127.0.0.1 >nul & goto move)',
-    ':launch',
-    `start "" "${process.execPath}"`,
-    'del "%~f0"',
-  ].join('\r\n'));
-  spawn('cmd.exe', ['/c', script], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  const helper = path.join(os.tmpdir(), 'klakboard-updater.js');
+  fs.writeFileSync(helper, fs.readFileSync(path.join(__dirname, 'updater.js')));
+  const logFile = path.join(os.tmpdir(), 'klakboard-update.log');
+  spawn(process.execPath, [helper, String(process.pid), staged, target, process.execPath, logFile], {
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+  }).unref();
 }
 
 let installing = false;
@@ -352,7 +343,14 @@ async function installUpdate(update = pendingUpdate) {
 // du raccourci cree par l'installeur, c'est-a-dire build.appId.
 app.setAppUserModelId('com.klakh.klakboard');
 
+// Une seule instance : relancer Klakboard pendant qu'elle tourne (ou pendant une
+// relance de mise a jour) affiche la fenetre existante au lieu d'en ouvrir une autre.
+const isPrimaryInstance = app.requestSingleInstanceLock();
+if (!isPrimaryInstance) app.exit(0);
+app.on('second-instance', showWindow);
+
 app.whenReady().then(() => {
+  if (!isPrimaryInstance) return;
   config = loadConfig();
   createWindow();
   createTray();
