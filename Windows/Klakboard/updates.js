@@ -7,7 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const REPO = 'Klakh/widgets';
+const REPO = 'LokLakh-s/widgets';
 const TAG_PREFIX = 'klakboard-v';
 const ASSET = 'app.asar';
 
