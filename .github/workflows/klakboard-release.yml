@@ -36,6 +36,7 @@ jobs:
       - name: Lire la version et verifier qu'elle est nouvelle
         id: ver
         run: |
+          $ErrorActionPreference = "Continue"
           $v = node -p "require('./package.json').version"
           $tag = "klakboard-v$v"
           gh release view $tag -R $env:GITHUB_REPOSITORY *> $null
