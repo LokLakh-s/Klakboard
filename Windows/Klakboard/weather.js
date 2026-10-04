@@ -31,15 +31,25 @@ function stormLevel(cape) {
   return 'fort';
 }
 
-/** Cle d'illustration (voir WX_ICONS dans renderer.js) a partir du code WMO. */
-function iconKey(code) {
-  if (code === 0) return 'sun';
-  if (code <= 2) return 'partly';
-  if (code === 45 || code === 48) return 'fog';
-  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return 'rain';
-  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
-  if (code >= 95) return 'storm';
-  return 'cloud';
+/** Nom de l'icone Meteocons (icons/weather/<nom>.svg) pour un code WMO. */
+function iconName(code, isDay) {
+  const dn = isDay ? 'day' : 'night';
+  if (code === 0) return `clear-${dn}`;
+  if (code === 1) return `mostly-clear-${dn}`;
+  if (code === 2) return `partly-cloudy-${dn}`;
+  if (code === 45 || code === 48) return `fog-${dn}`;
+  if (code >= 51 && code <= 55) return 'drizzle';
+  if ([56, 57, 66, 67].includes(code)) return 'sleet';
+  if (code === 61 || code === 63) return 'rain';
+  if (code === 65 || code === 82) return 'extreme-rain';
+  if ([71, 73, 77].includes(code)) return 'snow';
+  if (code === 75) return 'extreme-snow';
+  if (code === 80 || code === 81) return `partly-cloudy-${dn}-rain`;
+  if (code === 85 || code === 86) return `partly-cloudy-${dn}-snow`;
+  if (code === 95) return `thunderstorms-${dn}-rain`;
+  if (code === 96) return `thunderstorms-${dn}-hail`;
+  if (code === 99) return `thunderstorms-extreme-${dn}-hail`;
+  return `overcast-${dn}`;
 }
 
 function windDir(deg) {
@@ -52,7 +62,7 @@ async function getWeather() {
     longitude: String(SITE.lon),
     timezone: 'Europe/Paris',
     forecast_days: '2',
-    current: 'temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m',
+    current: 'temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_gusts_10m,wind_direction_10m',
     daily: 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max',
     hourly: 'cape',
   });
@@ -73,7 +83,7 @@ async function getWeather() {
     temp: d.current.temperature_2m,
     feels: d.current.apparent_temperature,
     desc: WMO[d.current.weather_code] || 'Inconnu',
-    icon: iconKey(d.current.weather_code),
+    icon: iconName(d.current.weather_code, d.current.is_day === 1),
     min: d.daily.temperature_2m_min[0],
     max: d.daily.temperature_2m_max[0],
     rainProb: d.daily.precipitation_probability_max[0],

@@ -51,12 +51,12 @@ html { font-size: 20px; }
   --scrim: rgba(12,6,8,.85);
 }
 
-[data-theme="blue"] {
-  --bg: #0a0f18;  --panel: #101825; --card: #141d2c;
-  --track: #1d2838; --inset: #0d141f; --hover: #223044; --line: #27364a;
-  --txt: #eef3fa; --dim: #cbd8e8; --faint: #a7b7cd;
-  --up: #4ec06a; --down: #ef6f69; --accent: #5b96d6; --warn: #d7a542;
-  --scrim: rgba(4,8,14,.85);
+[data-theme="forest"] {
+  --bg: #0b100a;  --panel: #111810; --card: #161f14;
+  --track: #202c1d; --inset: #0e140d; --hover: #253322; --line: #2c3a28;
+  --txt: #f0f5ea; --dim: #d2dcc6; --faint: #aebba2;
+  --up: #6cc070; --down: #ec7a6e; --accent: #8db35f; --warn: #d6a84a;
+  --scrim: rgba(5,8,4,.85);
 }
 
 [data-theme="green"] {
@@ -123,7 +123,7 @@ html, body {
 .dot.error { background: var(--down); box-shadow: 0 0 6px color-mix(in srgb, var(--down) 60%, transparent); }
 
 .dateBlock { display: flex; align-items: center; gap: 0.6rem; min-width: 0; flex: 0 1 auto; }
-.dateText { display: flex; flex-direction: column; min-width: 0; line-height: 1.12; }
+.dateText { display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; line-height: 1.12; }
 .dateDay, .dateFull {
   font-size: 1.6rem; font-weight: 400; color: var(--dim);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -166,20 +166,21 @@ html, body {
 .wPlace { font-size: 1.5rem; font-weight: 700; color: var(--dim); }
 .wOpen { font-size: 1.4rem; color: var(--accent); white-space: nowrap; }
 
-.wMain { display: flex; align-items: center; gap: 0.9rem; }
-.wIcon { flex: 0 0 auto; width: 4.6rem; height: 4.6rem; color: var(--txt); }
-.wIcon svg { width: 100%; height: 100%; display: block; }
-.wIcon.sun, .wIcon.partly { color: var(--warn); }
-.wIcon.rain { color: var(--accent); }
-.wIcon.storm { color: var(--warn); }
-.wTemp { font-size: 4rem; font-weight: 400; line-height: 1; font-variant-numeric: tabular-nums; }
-.wSide { display: flex; flex-direction: column; min-width: 0; }
+/* Occupe toute la hauteur libre de la carte, contenu centre verticalement. */
+.wMain { flex: 1 1 auto; display: flex; align-items: center; gap: 1.4rem; min-height: 0; }
+/* Le dessin Meteocons n'occupe qu'environ 70 % de sa boite : marges negatives
+   pour que la boite ne gonfle pas la carte. */
+.wIcon { flex: 0 0 auto; width: 9rem; height: 9rem; margin: -1.2rem -0.6rem -1.2rem -1rem; }
+.wReading { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; min-width: 0; }
+.wTemp { font-size: 4rem; font-weight: 400; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wUnit { font-size: 0.55em; margin-left: 0.15em; vertical-align: 0.6em; color: var(--dim); }
+.wSide { display: flex; flex-direction: column; align-items: flex-end; text-align: right; min-width: 0; }
 .wDesc { font-size: 1.7rem; color: var(--txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wFeels { font-size: 1.45rem; color: var(--faint); }
 
-.wStats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; margin-top: auto; }
+.wStats { display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 0.8rem; }
 .wStat { display: flex; flex-direction: column; min-width: 0; }
-.wLbl { font-size: 1.35rem; color: var(--faint); }
+.wLbl { font-size: 1.35rem; color: var(--faint); white-space: nowrap; }
 .wVal { font-size: 1.7rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wVal.warn { color: var(--warn); }
 .wVal.alert { color: var(--down); }

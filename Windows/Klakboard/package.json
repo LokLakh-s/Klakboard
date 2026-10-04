@@ -1,6 +1,6 @@
 {
   "name": "klakboard",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Klakboard — tableau de bord marches (metaux, devises, cryptos) et monitoring systeme, pour petit ecran secondaire",
   "main": "main.js",
   "author": "Klakh",
@@ -30,7 +30,8 @@
       "style.css",
       "build/icon.ico",
       "weather.js",
-      "updates.js"
+      "updates.js",
+      "icons/**/*"
     ],
     "win": {
       "target": [

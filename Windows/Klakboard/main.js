@@ -31,7 +31,7 @@ const DEFAULT_CONFIG = {
 
 /* Doit refleter --bg de chaque theme dans style.css. */
 const THEME_BG = {
-  dark: '#0b0e14', light: '#e8ebf0', red: '#150e10', blue: '#0a0f18',
+  dark: '#0b0e14', light: '#e8ebf0', red: '#150e10', forest: '#0b100a',
   green: '#0a1210', yellow: '#14120a', purple: '#100d16',
 };
 
@@ -56,7 +56,10 @@ const configPath = () => path.join(app.getPath('userData'), 'dashboard.json');
 
 function loadConfig() {
   try {
-    return { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(configPath(), 'utf8')) };
+    const loaded = { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(configPath(), 'utf8')) };
+    // Le theme "blue" a ete remplace par "forest".
+    if (loaded.theme === 'blue') loaded.theme = 'forest';
+    return loaded;
   } catch {
     return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
   }
