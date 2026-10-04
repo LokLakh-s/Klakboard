@@ -161,22 +161,29 @@ function openPanel(name) {
 }
 
 function buildTrayMenu() {
-  const template = [
+  const template = [];
+  if (pendingUpdate) {
+    template.push(
+      { label: `⬇  Installer la mise à jour ${pendingUpdate.version}…`, click: () => installUpdate() },
+      { type: 'separator' },
+    );
+  }
+  template.push(
     { label: 'Afficher / masquer', click: toggleWindow },
     { label: 'Rafraîchir les cours', click: refreshMarkets },
     { label: 'Ajouter une ligne…', click: () => openPanel('add') },
     { label: 'Réglages…', click: () => openPanel('settings') },
-  ];
-  if (pendingUpdate) {
-    template.push({ type: 'separator' });
-    template.push({ label: `Installer la mise à jour ${pendingUpdate.version}…`, click: installUpdate });
-  }
-  template.push({ type: 'separator' }, { label: 'Quitter Klakboard', click: quitApp });
+    { type: 'separator' },
+    { label: `Vérifier les mises à jour (v${APP_VERSION})`, click: () => checkForUpdates({ manual: true }) },
+    { label: 'Quitter Klakboard', click: quitApp },
+  );
   return Menu.buildFromTemplate(template);
 }
 
 function refreshTrayMenu() {
-  if (tray) tray.setContextMenu(buildTrayMenu());
+  if (!tray) return;
+  tray.setContextMenu(buildTrayMenu());
+  tray.setToolTip(pendingUpdate ? `Klakboard — mise à jour ${pendingUpdate.version} disponible` : 'Klakboard');
 }
 
 function createTray() {
@@ -253,20 +260,32 @@ function readUpdateToken() {
   }
 }
 
-async function checkForUpdates() {
+async function checkForUpdates({ manual = false } = {}) {
+  let update;
   try {
-    const update = await updates.findUpdate(APP_VERSION, readUpdateToken());
-    if (!update || (pendingUpdate && pendingUpdate.version === update.version)) return;
-    pendingUpdate = update;
-    refreshTrayMenu();
-    if (Notification.isSupported()) {
-      new Notification({
-        title: 'Klakboard',
-        body: `Version ${update.version} disponible — clic droit sur l'icône pour installer.`,
-      }).show();
-    }
+    update = await updates.findUpdate(APP_VERSION, readUpdateToken());
   } catch (err) {
     console.error('verification des mises a jour impossible:', err.message);
+    if (manual) dialog.showErrorBox('Vérification impossible', `${err.message}\n\nToken lu dans : ${tokenPath()}`);
+    return;
+  }
+  if (!update) {
+    if (manual) {
+      dialog.showMessageBox({ type: 'info', title: 'Klakboard', message: `Klakboard ${APP_VERSION} est à jour.` });
+    }
+    return;
+  }
+  if (manual) return installUpdate(update);
+  if (pendingUpdate && pendingUpdate.version === update.version) return;
+  pendingUpdate = update;
+  refreshTrayMenu();
+  if (Notification.isSupported()) {
+    const n = new Notification({
+      title: `Klakboard ${update.version} disponible`,
+      body: 'Cliquer ici pour mettre à jour (ou clic droit sur l\'icône de Klakboard).',
+    });
+    n.on('click', () => installUpdate());
+    n.show();
   }
 }
 
@@ -282,16 +301,28 @@ function swapAndRelaunch(staged, target) {
     ':wait',
     `tasklist /FI "PID eq ${process.pid}" 2>nul | find "${process.pid}" >nul`,
     'if not errorlevel 1 (ping -n 2 127.0.0.1 >nul & goto wait)',
-    `move /Y "${staged}" "${target}"`,
+    'set n=0',
+    ':move',
+    `move /Y "${staged}" "${target}" >nul 2>&1`,
+    'if not errorlevel 1 goto launch',
+    'set /a n+=1',
+    'if %n% lss 30 (ping -n 2 127.0.0.1 >nul & goto move)',
+    ':launch',
     `start "" "${process.execPath}"`,
     'del "%~f0"',
   ].join('\r\n'));
   spawn('cmd.exe', ['/c', script], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
 }
 
-async function installUpdate() {
-  if (!pendingUpdate) return;
-  const { response } = await dialog.showMessageBox(mainWindow, {
+let installing = false;
+
+async function installUpdate(update = pendingUpdate) {
+  if (!update || installing) return;
+  pendingUpdate = update;
+  refreshTrayMenu();
+  // Sans fenetre parente : la boite s'ouvre sur l'ecran principal, la ou l'on a
+  // clique, et non sur le petit ecran du dashboard.
+  const { response } = await dialog.showMessageBox({
     type: 'question',
     buttons: ['Mettre à jour', 'Plus tard'],
     defaultId: 0,
@@ -302,6 +333,7 @@ async function installUpdate() {
   });
   if (response !== 0) return;
 
+  installing = true;
   const target = path.join(process.resourcesPath, 'app.asar');
   const staged = `${target}.new`;
   try {
@@ -309,11 +341,16 @@ async function installUpdate() {
     swapAndRelaunch(staged, target);
     quitApp();
   } catch (err) {
+    installing = false;
     dialog.showErrorBox('Mise à jour impossible', err.message);
   }
 }
 
 /* ---------------- cycle de vie ---------------- */
+
+// Windows n'affiche les notifications que pour un AppUserModelID connu : celui
+// du raccourci cree par l'installeur, c'est-a-dire build.appId.
+app.setAppUserModelId('com.klakh.klakboard');
 
 app.whenReady().then(() => {
   config = loadConfig();
@@ -333,7 +370,7 @@ app.whenReady().then(() => {
     weatherTimer = setInterval(refreshWeather, 15 * 60 * 1000);
 
     setTimeout(checkForUpdates, 8000);
-    setInterval(checkForUpdates, 6 * 60 * 60 * 1000);
+    setInterval(checkForUpdates, 30 * 60 * 1000);
 
     system.start((sample) => {
       // Les cumuls reseau s'accumulent a partir des deltas : les compteurs de
