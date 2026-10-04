@@ -43,6 +43,7 @@ jobs:
           $exists = ($LASTEXITCODE -eq 0)
           "tag=$tag" >> $env:GITHUB_OUTPUT
           "exists=$exists" >> $env:GITHUB_OUTPUT
+          exit 0
 
       - name: Installer les dependances
         if: steps.ver.outputs.exists == 'False'
