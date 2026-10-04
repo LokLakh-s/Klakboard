@@ -84,7 +84,7 @@ test('empreinte de telechargement', () => {
   const buf = Buffer.from('klakboard');
   const ok = `sha256:${require('crypto').createHash('sha256').update(buf).digest('hex')}`;
   assert.doesNotThrow(() => checkDigest(buf, ok));
-  assert.doesNotThrow(() => checkDigest(buf, null));
+  assert.throws(() => checkDigest(buf, null), /pas encore publiée/);
   assert.throws(() => checkDigest(Buffer.from('autre'), ok), /empreinte/);
 });
 

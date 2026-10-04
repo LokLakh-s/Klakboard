@@ -400,12 +400,14 @@ function applyNight() {
 const tokenPath = () => path.join(app.getPath('userData'), token.PLAIN);
 const readUpdateToken = () => token.readToken(app.getPath('userData'), safeStorage);
 
+// L'archive de l'appli ne tourne que sur le moteur pour lequel elle a ete construite.
+const findUpdate = () =>
+  updates.findUpdate(APP_VERSION, process.versions.electron.split('.')[0], readUpdateToken());
+
 async function checkForUpdates({ manual = false } = {}) {
   let update;
   try {
-    // L'archive de l'appli ne tourne que sur le moteur pour lequel elle a ete construite.
-    const electronMajor = process.versions.electron.split('.')[0];
-    update = await updates.findUpdate(APP_VERSION, electronMajor, readUpdateToken());
+    update = await findUpdate();
   } catch (err) {
     console.error('verification des mises a jour impossible:', err.message);
     if (manual) {
@@ -475,6 +477,10 @@ async function installUpdate(update = pendingUpdate) {
 
   installing = true;
   try {
+    // Infos relues juste avant le telechargement : celles de la notification
+    // peuvent dater d'avant la publication de l'empreinte par GitHub.
+    const fresh = await findUpdate().catch(() => null);
+    if (fresh?.version === update.version) update = fresh;
     if (viaInstaller) {
       // Installeur non signe, mais ecrit par l'appli et non par un navigateur :
       // sans marque "telecharge d'Internet", SmartScreen ne s'interpose pas.

@@ -66,11 +66,16 @@ async function findUpdate(currentVersion, electronMajor, token) {
   return pickUpdate(await res.json(), currentVersion, electronMajor);
 }
 
-/** Leve une erreur si `buf` ne correspond pas a l'empreinte publiee par GitHub ("sha256:<hex>"). */
+/**
+ * Leve une erreur si `buf` ne correspond pas a l'empreinte publiee par GitHub
+ * ("sha256:<hex>"). GitHub ne la publie que quelques instants apres le depot
+ * du fichier : sans elle, on refuse plutot que d'installer sans controle.
+ */
 function checkDigest(buf, digest) {
-  if (!digest) return; // releases anterieures a la publication des empreintes
-  const [algo, expected] = digest.split(':');
-  if (algo !== 'sha256') return;
+  const [algo, expected] = (digest || '').split(':');
+  if (algo !== 'sha256' || !expected) {
+    throw new Error('Empreinte du fichier pas encore publiée par GitHub : réessayer dans une minute');
+  }
   const actual = crypto.createHash('sha256').update(buf).digest('hex');
   if (actual !== expected) throw new Error('Fichier de mise à jour corrompu (empreinte SHA-256 différente)');
 }
