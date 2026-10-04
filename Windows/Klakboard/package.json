@@ -1,6 +1,6 @@
 {
   "name": "klakboard",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Klakboard — tableau de bord marches (metaux, devises, cryptos) et monitoring systeme, pour petit ecran secondaire",
   "main": "main.js",
   "author": "Klakh",
