@@ -23,6 +23,7 @@ const DEFAULT_CONFIG = {
   bounds: null,
   display: null,   // ecran choisi dans "Plein ecran sur…" : { id, width, height }
   weatherSite: weather.DEFAULT_SITE,
+  night: { enabled: true, dim: 0.5 },   // assombrissement du coucher au lever du soleil
   items: [
     { kind: 'metal', code: 'XAU' },
     { kind: 'metal', code: 'XAG' },
@@ -366,10 +367,32 @@ async function refreshSparks() {
 async function refreshWeather() {
   if (!mainWindow) return;
   try {
-    mainWindow.webContents.send('weather', { data: await weather.getWeather(config.weatherSite), error: null });
+    const data = await weather.getWeather(config.weatherSite);
+    lastSun = data.sun;
+    if (mainWindow) mainWindow.webContents.send('weather', { data, error: null });
+    applyNight();
   } catch (err) {
-    mainWindow.webContents.send('weather', { data: null, error: err.message });
+    if (mainWindow) mainWindow.webContents.send('weather', { data: null, error: err.message });
   }
+}
+
+/* ---------------- mode nuit ---------------- */
+
+// Heures de soleil de la ville meteo : la nuit est evaluee chaque minute, la
+// meteo n'etant rafraichie que toutes les 15 min.
+let lastSun = null;
+let nightTimer;
+
+function applyNight() {
+  if (!mainWindow) return;
+  const win = weather.nightWindow(Date.now(), lastSun);
+  mainWindow.webContents.send('night', {
+    on: config.night.enabled && !!win?.on,
+    dim: config.night.dim,
+    from: win?.from ?? null,
+    until: win?.until ?? null,
+    current: !!win?.on,
+  });
 }
 
 /* ---------------- mises a jour ---------------- */
@@ -521,6 +544,7 @@ app.whenReady().then(() => {
 
     refreshWeather();
     weatherTimer = setInterval(refreshWeather, 15 * 60 * 1000);
+    nightTimer = setInterval(applyNight, 60 * 1000);
 
     setTimeout(checkForUpdates, 8000);
     setInterval(checkForUpdates, 30 * 60 * 1000);
@@ -555,6 +579,7 @@ app.on('before-quit', () => {
   if (marketTimer) clearInterval(marketTimer);
   if (sparkTimer) clearInterval(sparkTimer);
   if (weatherTimer) clearInterval(weatherTimer);
+  if (nightTimer) clearInterval(nightTimer);
   saveConfig();
 });
 
@@ -727,6 +752,17 @@ ipcMain.handle('reset-net-totals', () => {
 });
 
 ipcMain.handle('open-weather-map', () => shell.openExternal(weather.mapUrl(config.weatherSite)));
+
+ipcMain.handle('set-night', (_e, { enabled, dim } = {}) => {
+  const level = Number(dim);
+  config.night = {
+    enabled: enabled === undefined ? config.night.enabled : !!enabled,
+    dim: Number.isFinite(level) ? Math.min(0.9, Math.max(0.1, level)) : config.night.dim,
+  };
+  saveConfig();
+  applyNight();
+  return config;
+});
 
 ipcMain.handle('search-places', async (_e, q) => {
   try {

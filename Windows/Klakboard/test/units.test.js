@@ -124,3 +124,24 @@ test('token GitHub : chiffre a la premiere lecture, fichier en clair supprime', 
   assert.equal(readToken(dir, noSeal), 'github_pat_clair');
   assert.ok(fs.existsSync(path.join(dir, PLAIN)));
 });
+
+test('mode nuit : du coucher au lever du soleil', () => {
+  const { nightWindow } = require('../weather');
+  const h = (x) => x * 3600e3;
+  const sun = [{ rise: h(8), set: h(19.5) }, { rise: h(24 + 8), set: h(24 + 19.5) }];
+  assert.deepEqual(nightWindow(h(3), sun), { on: true, from: null, until: h(8) });
+  assert.deepEqual(nightWindow(h(12), sun), { on: false, from: h(19.5), until: h(32) });
+  assert.deepEqual(nightWindow(h(21), sun), { on: true, from: h(19.5), until: h(32) });
+  // Apres minuit, meteo pas encore rafraichie : sun[0] est la veille.
+  assert.equal(nightWindow(h(24.5), sun).on, true);
+  assert.equal(nightWindow(h(12), null), null);
+  assert.equal(nightWindow(h(12), [{ rise: NaN, set: NaN }]), null);
+});
+
+test('tout ce que la page appelle est expose par preload.js', () => {
+  // Une fonction manquante leve une erreur des le chargement : page vide.
+  const used = new Set([...read('renderer.js').matchAll(/window\.dash\.(\w+)/g)].map((m) => m[1]));
+  const exposed = new Set([...read('preload.js').matchAll(/^\s+(\w+):/gm)].map((m) => m[1]));
+  const missing = [...used].filter((f) => !exposed.has(f));
+  assert.deepEqual(missing, []);
+});

@@ -401,6 +401,18 @@ html, body {
 }
 .purge:hover { border-color: var(--down); color: var(--down); }
 
+/* ================= mode nuit ================= */
+
+/* Assombrit tout le tableau de bord ; les panneaux (z-index 20) passent au-dessus. */
+.nightVeil {
+  position: fixed; inset: 0; z-index: 15;
+  background: #000; opacity: 0;
+  pointer-events: none;
+  transition: opacity 3s ease;
+}
+.nightRow { margin-top: 0.2rem; border-top: none; padding-top: 0; }
+#nightHint { margin: 0 0 0.6rem; }
+
 /* ================= overlays ================= */
 
 .ov {

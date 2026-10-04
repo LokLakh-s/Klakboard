@@ -66,7 +66,7 @@ async function getWeather(site = DEFAULT_SITE) {
     timezone: site.timezone || 'auto',
     forecast_days: '2',
     current: 'temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_gusts_10m,wind_direction_10m',
-    daily: 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max',
+    daily: 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,sunrise,sunset',
     hourly: 'cape',
   });
   const res = await fetch(`${OPEN_METEO}?${params}`, { signal: AbortSignal.timeout(15000) });
@@ -80,6 +80,9 @@ async function getWeather(site = DEFAULT_SITE) {
     .filter((h) => h.t >= now)
     .slice(0, 12);
   const capeMax = Math.max(0, ...upcoming.map((h) => h.cape ?? 0));
+
+  // Heures locales de la ville, sans decalage : converties en instants absolus.
+  const toMs = (local) => (local ? Date.parse(`${local}:00Z`) - d.utc_offset_seconds * 1000 : NaN);
 
   return {
     site: site.label,
@@ -96,6 +99,8 @@ async function getWeather(site = DEFAULT_SITE) {
     windDir: windDir(d.current.wind_direction_10m),
     windMax: Math.round(d.daily.wind_speed_10m_max[0]),
     storm: stormLevel(capeMax),
+    // Lever et coucher du jour et du lendemain (absents en nuit ou jour polaire).
+    sun: d.daily.sunrise.map((rise, i) => ({ rise: toMs(rise), set: toMs(d.daily.sunset[i]) })),
     updatedAt: Date.now(),
   };
 }
@@ -127,4 +132,20 @@ async function searchPlaces(query) {
   }));
 }
 
-module.exports = { getWeather, searchPlaces, placeLabel, mapUrl, iconName, WMO, DEFAULT_SITE };
+/**
+ * Nuit en cours ou a venir, du coucher au lever du soleil : { on, from, until }
+ * (instants en ms ; from vaut null avant le lever, le coucher de la veille
+ * n'etant pas connu). null sans heures de soleil (meteo indisponible, nuit ou
+ * jour polaire). `sun[0]` est la journee en cours dans le fuseau de la ville ;
+ * apres minuit, tant que la meteo n'est pas rafraichie, c'est encore la veille :
+ * on est alors apres son coucher, donc bien la nuit.
+ */
+function nightWindow(now, sun) {
+  const [today, tomorrow] = sun || [];
+  if (!today || !Number.isFinite(today.rise) || !Number.isFinite(today.set)) return null;
+  if (now < today.rise) return { on: true, from: null, until: today.rise };
+  const until = Number.isFinite(tomorrow?.rise) ? tomorrow.rise : null;
+  return { on: now >= today.set, from: today.set, until };
+}
+
+module.exports = { getWeather, searchPlaces, placeLabel, mapUrl, nightWindow, iconName, WMO, DEFAULT_SITE };

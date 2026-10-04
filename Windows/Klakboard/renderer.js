@@ -573,6 +573,10 @@ function syncSettings() {
   );
   $('coverTgl').checked = !!config.coverTaskbar;
   $('siteNow').textContent = config.weatherSite?.label || '--';
+  $('nightTgl').checked = !!config.night?.enabled;
+  document.querySelectorAll('#nightDims .chip').forEach((c) =>
+    c.classList.toggle('active', Math.abs(Number(c.dataset.dim) - (config.night?.dim ?? 0.5)) < 0.01)
+  );
 }
 
 $('themes').addEventListener('click', async (e) => {
@@ -642,6 +646,30 @@ $('autoTgl').addEventListener('change', async (e) => {
   // On repositionne la case sur l'etat reellement applique : si Windows refuse
   // l'ecriture dans le registre, la case ne doit pas rester cochee a tort.
   e.target.checked = await window.dash.setAutoLaunch(e.target.checked);
+});
+
+/* ---------------- mode nuit ---------------- */
+
+const hhmm = (ms) => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+window.dash.onNight(({ on, dim, from, until, current }) => {
+  $('nightVeil').style.opacity = on ? String(dim) : '0';
+  const span = from ? `${hhmm(from)} → ${until ? hhmm(until) : '?'}` : `jusqu'à ${hhmm(until)}`;
+  $('nightHint').textContent = until || from
+    ? `${current ? 'Nuit en cours' : 'Prochaine nuit'} : ${span}, d'après le soleil à ${config.weatherSite?.label || 'la ville météo'}.`
+    : 'Heures du soleil pas encore connues (météo indisponible).';
+});
+
+$('nightTgl').addEventListener('change', async (e) => {
+  config = await window.dash.setNight({ enabled: e.target.checked });
+  syncSettings();
+});
+
+$('nightDims').addEventListener('click', async (e) => {
+  const b = e.target.closest('.chip');
+  if (!b) return;
+  config = await window.dash.setNight({ dim: Number(b.dataset.dim) });
+  syncSettings();
 });
 
 /* ---------------- ville meteo ---------------- */

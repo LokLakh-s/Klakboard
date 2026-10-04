@@ -117,3 +117,15 @@ test('ville meteo : Paris par defaut, choix valide retenu, saisie invalide ignor
   config = await app.invoke('set-weather-site', { label: 'Pole', lat: 89, lon: 0, timezone: 'x; rm -rf' });
   assert.equal(config.weatherSite.timezone, 'auto');
 });
+
+test('mode nuit : actif par defaut a 50 %, reglages bornes et retenus', async () => {
+  const app = await loadMain({ displays: [primary(), small()] });
+  let config = await app.invoke('get-config');
+  assert.deepEqual(config.night, { enabled: true, dim: 0.5 });
+  config = await app.invoke('set-night', { dim: 5 });
+  assert.deepEqual(config.night, { enabled: true, dim: 0.9 });
+  config = await app.invoke('set-night', { enabled: false });
+  assert.deepEqual(config.night, { enabled: false, dim: 0.9 });
+  const saved = JSON.parse(fs.readFileSync(path.join(app.userData, 'dashboard.json'), 'utf8'));
+  assert.deepEqual(saved.night, { enabled: false, dim: 0.9 });
+});

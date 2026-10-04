@@ -193,6 +193,19 @@
         <button class="chip" data-z="1.75">175 %</button>
       </div>
 
+      <div class="fLabel">Mode nuit · assombrir de</div>
+      <div class="chips" id="nightDims">
+        <button class="chip" data-dim="0.3">30 %</button>
+        <button class="chip" data-dim="0.5">50 %</button>
+        <button class="chip" data-dim="0.7">70 %</button>
+      </div>
+      <label class="switchRow nightRow">
+        <span>Assombrir du coucher au lever du soleil</span>
+        <input type="checkbox" id="nightTgl" />
+        <span class="switch"></span>
+      </label>
+      <p class="hint" id="nightHint"></p>
+
       <div class="fLabel">Ville météo · <span id="siteNow">--</span></div>
       <input class="input" id="siteSearch" placeholder="Rechercher une ville…" autocomplete="off" />
       <ul class="results" id="siteResults"></ul>
@@ -218,6 +231,9 @@
       <p class="hint">Le système (CPU, RAM, GPU, réseau) se met à jour chaque seconde, indépendamment de ce réglage.</p>
     </div>
   </div>
+
+  <!-- Voile du mode nuit : sous les panneaux, qui restent lisibles. -->
+  <div class="nightVeil" id="nightVeil"></div>
 
   <script src="renderer.js"></script>
 </body>

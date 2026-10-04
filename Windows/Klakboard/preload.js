@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('dash', {
   resetNetTotals: () => ipcRenderer.invoke('reset-net-totals'),
   onOpenPanel: (cb) => ipcRenderer.on('open-panel', (_e, name) => cb(name)),
   onWeather: (cb) => ipcRenderer.on('weather', (_e, d) => cb(d)),
+  onNight: (cb) => ipcRenderer.on('night', (_e, d) => cb(d)),
+  setNight: (n) => ipcRenderer.invoke('set-night', n),
   openWeatherMap: () => ipcRenderer.invoke('open-weather-map'),
   searchPlaces: (q) => ipcRenderer.invoke('search-places', q),
   setWeatherSite: (site) => ipcRenderer.invoke('set-weather-site', site),
