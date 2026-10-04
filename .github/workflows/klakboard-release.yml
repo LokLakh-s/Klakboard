@@ -26,11 +26,11 @@ jobs:
       run:
         working-directory: Windows/Klakboard
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Version a publier
         id: ver
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const { version } = require(`${process.env.GITHUB_WORKSPACE}/Windows/Klakboard/package.json`);
@@ -65,7 +65,7 @@ jobs:
 
       - name: Publier la release
         if: steps.ver.outputs.exists == 'false'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           VERSION: ${{ steps.ver.outputs.version }}
           TAG: ${{ steps.ver.outputs.tag }}
