@@ -1,11 +1,11 @@
-# Workflow de release Klakboard. A placer dans <racine du depot>/.github/workflows/
-# (GitHub ne lit que la racine du depot ; le projet vit dans Windows/Klakboard).
+# Release Klakboard, executee par le runner auto-heberge (label "widgets").
 #
-# A chaque push sur main touchant Klakboard, si "version" dans package.json n'a pas
-# encore de release klakboard-v<version>, le runner Windows construit :
-#   - l'installeur NSIS (premiere installation, reinstallation)
+# A chaque push sur main touchant Windows/Klakboard, si "version" dans package.json
+# n'a pas encore de release klakboard-v<version>, construit dans un conteneur
+# electron-builder (Wine inclus, l'hote n'a besoin que de Docker) :
+#   - l'installeur NSIS (premiere installation, changement de version d'Electron)
 #   - app.asar (mise a jour depuis l'appli)
-# et publie la release. Aucune commande a lancer en local.
+# puis publie la release, taguee sur le commit construit.
 name: Klakboard release
 
 on:
@@ -17,52 +17,86 @@ on:
 permissions:
   contents: write
 
+concurrency: klakboard-release
+
 jobs:
   release:
-    runs-on: windows-latest
+    runs-on: [self-hosted, Linux, widgets]
     defaults:
       run:
-        shell: pwsh
         working-directory: Windows/Klakboard
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Lire la version et verifier qu'elle est nouvelle
+      - name: Version a publier
         id: ver
-        run: |
-          $ErrorActionPreference = "Continue"
-          $v = node -p "require('./package.json').version"
-          $tag = "klakboard-v$v"
-          gh release view $tag -R $env:GITHUB_REPOSITORY *> $null
-          $exists = ($LASTEXITCODE -eq 0)
-          "tag=$tag" >> $env:GITHUB_OUTPUT
-          "exists=$exists" >> $env:GITHUB_OUTPUT
-          exit 0
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { version } = require(`${process.env.GITHUB_WORKSPACE}/Windows/Klakboard/package.json`);
+            const tag = `klakboard-v${version}`;
+            let exists = true;
+            try {
+              await github.rest.repos.getReleaseByTag({ ...context.repo, tag });
+            } catch (e) {
+              if (e.status !== 404) throw e;
+              exists = false;
+            }
+            core.setOutput('version', version);
+            core.setOutput('tag', tag);
+            core.setOutput('exists', String(exists));
+            core.notice(exists ? `${tag} existe deja : rien a publier (bumper "version").` : `Publication de ${tag}.`);
 
-      - name: Installer les dependances
-        if: steps.ver.outputs.exists == 'False'
-        run: npm install
-
-      - name: Construire installeur et app.asar
-        if: steps.ver.outputs.exists == 'False'
+      # Conteneur lance avec l'uid du runner : sinon node_modules/ et dist/ appartiennent
+      # a root et le checkout suivant ne peut plus nettoyer le workspace. HOME pointe
+      # dans le cache de l'hote : Wine exige un HOME possede par l'utilisateur, et le
+      # prefixe Wine y est conserve d'un build a l'autre.
+      - name: Build (electron-builder + Wine, en conteneur)
+        if: steps.ver.outputs.exists == 'false'
         run: |
-          npx electron-builder --win --publish never
-          npx electron-builder --win --dir --publish never
+          CACHE="$HOME/.cache/klakboard-build"
+          mkdir -p "$CACHE/home"
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -e HOME=/cache/home -e npm_config_cache=/cache/npm \
+            -e ELECTRON_CACHE=/cache/electron -e ELECTRON_BUILDER_CACHE=/cache/electron-builder \
+            -v "$PWD":/project -w /project -v "$CACHE":/cache \
+            electronuserland/builder:wine \
+            bash -c "npm install --no-audit --no-fund && npx electron-builder --win --publish never"
 
       - name: Publier la release
-        if: steps.ver.outputs.exists == 'False'
-        run: |
-          $tag = "${{ steps.ver.outputs.tag }}"
-          $v = node -p "require('./package.json').version"
-          gh release create $tag `
-            "dist/Klakboard Setup $v.exe" `
-            "dist/win-unpacked/resources/app.asar" `
-            -R $env:GITHUB_REPOSITORY `
-            --title "Klakboard $v" `
-            --notes "Klakboard $v. Mise a jour depuis l'appli (clic droit sur l'icone de la zone de notifications)."
+        if: steps.ver.outputs.exists == 'false'
+        uses: actions/github-script@v7
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const { VERSION, TAG } = process.env;
+            const dist = path.join(process.env.GITHUB_WORKSPACE, 'Windows/Klakboard/dist');
+            const assets = [
+              [`Klakboard Setup ${VERSION}.exe`, `Klakboard.Setup.${VERSION}.exe`],
+              ['win-unpacked/resources/app.asar', 'app.asar'],
+            ];
+            for (const [file] of assets) {
+              if (!fs.existsSync(path.join(dist, file))) core.setFailed(`Artefact manquant : ${file}`);
+            }
+            if (process.exitCode) return;
+
+            const { data: rel } = await github.rest.repos.createRelease({
+              ...context.repo,
+              tag_name: TAG,
+              target_commitish: context.sha,
+              name: `Klakboard ${VERSION}`,
+              body: `Klakboard ${VERSION}. Mise a jour depuis l'appli : clic droit sur l'icone de la zone de notifications.`,
+            });
+            for (const [file, name] of assets) {
+              await github.rest.repos.uploadReleaseAsset({
+                ...context.repo,
+                release_id: rel.id,
+                name,
+                data: fs.readFileSync(path.join(dist, file)),
+              });
+            }
+            core.notice(`${TAG} publiee : ${rel.html_url}`);
