@@ -35,7 +35,7 @@ function createMock({ displays, primaryId, userData }) {
       this.visible = opts.show !== false;
       this.onTop = false;
       this.events = {};
-      this.webContents = { send() {}, once() {}, setZoomFactor() {} };
+      this.webContents = { send() {}, once() {}, on() {}, setZoomFactor() {}, setWindowOpenHandler() {} };
       window = this;
     }
     loadFile() {}
@@ -80,6 +80,7 @@ function createMock({ displays, primaryId, userData }) {
     dialog: { showMessageBox: async () => ({ response: 1 }), showErrorBox() {} },
     Notification: class { static isSupported() { return false; } },
     powerMonitor: { on() {} },
+    safeStorage: { isEncryptionAvailable: () => false },
   };
 
   return {

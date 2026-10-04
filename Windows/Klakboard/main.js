@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, globalShortcut, Tray, Menu, nativeImage, shell, dialog, Notification, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, Tray, Menu, nativeImage, shell, dialog, Notification, powerMonitor, safeStorage } = require('electron');
 const { spawn } = require('child_process');
 const os = require('os');
 const path = require('path');
@@ -9,6 +9,7 @@ const system = require('./system');
 const weather = require('./weather');
 const updates = require('./updates');
 const display = require('./display');
+const token = require('./token');
 const { version: APP_VERSION } = require('./package.json');
 
 /* ---------------- configuration ---------------- */
@@ -21,6 +22,7 @@ const DEFAULT_CONFIG = {
   netTotals: { rx: 0, tx: 0 },
   bounds: null,
   display: null,   // ecran choisi dans "Plein ecran sur…" : { id, width, height }
+  weatherSite: weather.DEFAULT_SITE,
   items: [
     { kind: 'metal', code: 'XAU' },
     { kind: 'metal', code: 'XAG' },
@@ -148,6 +150,11 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+
+  // La fenetre n'affiche que index.html : aucune navigation ni fenetre surgissante
+  // (la carte meteo s'ouvre dans le navigateur, via shell).
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.on('will-navigate', (e) => e.preventDefault());
 
   mainWindow.loadFile('index.html');
   placeWindow(true);
@@ -342,12 +349,24 @@ function restartMarketTimer() {
   marketTimer = setInterval(refreshMarkets, config.refreshMs);
 }
 
+/* ---------------- mini-courbes ---------------- */
+
+// Une courbe de 12 h ne bouge guere en 20 s : rafraichie toutes les 5 min.
+const SPARK_EVERY_MS = 5 * 60 * 1000;
+let sparkTimer;
+
+async function refreshSparks() {
+  if (!mainWindow) return;
+  const sparks = await markets.getSparks(config.items).catch(() => ({}));
+  if (mainWindow) mainWindow.webContents.send('sparks', sparks);
+}
+
 /* ---------------- meteo ---------------- */
 
 async function refreshWeather() {
   if (!mainWindow) return;
   try {
-    mainWindow.webContents.send('weather', { data: await weather.getWeather(), error: null });
+    mainWindow.webContents.send('weather', { data: await weather.getWeather(config.weatherSite), error: null });
   } catch (err) {
     mainWindow.webContents.send('weather', { data: null, error: err.message });
   }
@@ -355,15 +374,8 @@ async function refreshWeather() {
 
 /* ---------------- mises a jour ---------------- */
 
-const tokenPath = () => path.join(app.getPath('userData'), 'github-token.txt');
-
-function readUpdateToken() {
-  try {
-    return fs.readFileSync(tokenPath(), 'utf8').trim() || null;
-  } catch {
-    return null;
-  }
-}
+const tokenPath = () => path.join(app.getPath('userData'), token.PLAIN);
+const readUpdateToken = () => token.readToken(app.getPath('userData'), safeStorage);
 
 async function checkForUpdates({ manual = false } = {}) {
   let update;
@@ -373,7 +385,10 @@ async function checkForUpdates({ manual = false } = {}) {
     update = await updates.findUpdate(APP_VERSION, electronMajor, readUpdateToken());
   } catch (err) {
     console.error('verification des mises a jour impossible:', err.message);
-    if (manual) dialog.showErrorBox('Vérification impossible', `${err.message}\n\nToken lu dans : ${tokenPath()}`);
+    if (manual) {
+      dialog.showErrorBox('Vérification impossible',
+        `${err.message}\n\nPour changer de token GitHub, le déposer en clair dans : ${tokenPath()}`);
+    }
     return;
   }
   if (!update) {
@@ -492,6 +507,7 @@ app.whenReady().then(() => {
   // le prochain cycle.
   powerMonitor.on('resume', () => {
     refreshMarkets();
+    refreshSparks();
     refreshWeather();
   });
 
@@ -499,6 +515,9 @@ app.whenReady().then(() => {
     mainWindow.webContents.setZoomFactor(config.zoom || 1);
     refreshMarkets();
     restartMarketTimer();
+
+    refreshSparks();
+    sparkTimer = setInterval(refreshSparks, SPARK_EVERY_MS);
 
     refreshWeather();
     weatherTimer = setInterval(refreshWeather, 15 * 60 * 1000);
@@ -534,6 +553,7 @@ app.on('before-quit', () => {
   isQuitting = true;
   system.stop();
   if (marketTimer) clearInterval(marketTimer);
+  if (sparkTimer) clearInterval(sparkTimer);
   if (weatherTimer) clearInterval(weatherTimer);
   saveConfig();
 });
@@ -671,6 +691,7 @@ ipcMain.handle('add-item', (_e, item) => {
     config.items.push(item);
     saveConfig();
     refreshMarkets();
+    refreshSparks();
   }
   return config;
 });
@@ -705,4 +726,28 @@ ipcMain.handle('reset-net-totals', () => {
   return config.netTotals;
 });
 
-ipcMain.handle('open-weather-map', () => shell.openExternal(weather.CARD_URL));
+ipcMain.handle('open-weather-map', () => shell.openExternal(weather.mapUrl(config.weatherSite)));
+
+ipcMain.handle('search-places', async (_e, q) => {
+  try {
+    return await weather.searchPlaces(String(q).slice(0, 80));
+  } catch {
+    return [];
+  }
+});
+
+ipcMain.handle('set-weather-site', (_e, site) => {
+  const lat = Number(site?.lat);
+  const lon = Number(site?.lon);
+  if (!(Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) return config;
+  config.weatherSite = {
+    label: String(site.label || '').slice(0, 60) || `${lat.toFixed(2)}, ${lon.toFixed(2)}`,
+    lat,
+    lon,
+    // Fuseau IANA de la ville (journee meteo, min/max) ; Open-Meteo le deduit sinon.
+    timezone: /^[A-Za-z_+\-]+(\/[A-Za-z0-9_+\-]+)*$/.test(site.timezone || '') ? site.timezone : 'auto',
+  };
+  saveConfig();
+  refreshWeather();
+  return config;
+});

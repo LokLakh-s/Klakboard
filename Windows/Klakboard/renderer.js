@@ -1,8 +1,17 @@
 const $ = (id) => document.getElementById(id);
 
+/** Element avec texte : les donnees venues d'une API ou de l'OS ne passent jamais par innerHTML. */
+function el(tag, className, text) {
+  const e = document.createElement(tag);
+  if (className) e.className = className;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
 let config = { items: [], refreshMs: 20000, coverTaskbar: true };
 let catalogs = { metals: {}, fxCurrencies: [] };
 let lastQuotes = {};
+let lastSparks = {};
 const prevPrices = new Map();
 const rowCells = new Map();
 
@@ -72,6 +81,7 @@ function renderMarkets() {
   );
   for (const it of sorted) grid.appendChild(makeBadge(it));
   wrap.appendChild(grid);
+  applySparks(lastSparks);
 }
 
 async function dropItem(it) {
@@ -104,7 +114,7 @@ function makeBadge(it) {
 
   const top = document.createElement('div');
   top.className = 'bTop';
-  top.innerHTML = `<span class="bSym">${sym}</span><span class="bVs">${vs}</span>`;
+  top.append(el('span', 'bSym', sym), el('span', 'bVs', vs));
   top.appendChild(makeRemoveBtn(it, 'bRm'));
 
   const price = document.createElement('div');
@@ -115,11 +125,52 @@ function makeBadge(it) {
   chg.className = 'bChg';
   chg.textContent = '--';
 
-  b.append(top, price, chg);
+  const spark = document.createElement('div');
+  spark.className = 'bSpark';
+
+  b.append(top, price, chg, spark);
   b.addEventListener('click', () => openChart(it));
-  rowCells.set(keyOf(it), { price, chg, badge: b });
+  rowCells.set(keyOf(it), { price, chg, spark, badge: b });
   return b;
 }
+
+/**
+ * Mini-courbe 12 h, dans la colonne laissee libre a droite du prix. Trace dans
+ * un repere 100 x 100 etire a la taille de la case : pas de retrace au
+ * redimensionnement, et la couleur suit le theme via currentColor.
+ */
+function drawSpark(box, points) {
+  if (!points || points.length < 2) {
+    box.innerHTML = '';
+    return;
+  }
+  const ys = points.map((p) => p[1]);
+  const lo = Math.min(...ys);
+  const span = Math.max(...ys) - lo || 1;
+  const t0 = points[0][0];
+  const dt = points[points.length - 1][0] - t0 || 1;
+  const line = points
+    .map(([t, v]) => `${(((t - t0) / dt) * 100).toFixed(2)},${(96 - ((v - lo) / span) * 92).toFixed(2)}`)
+    .join(' ');
+  const up = ys[ys.length - 1] >= ys[0];
+  box.className = `bSpark ${up ? 'up' : 'down'}`;
+  box.innerHTML =
+    '<svg viewBox="0 0 100 100" preserveAspectRatio="none">' +
+    `<polygon points="0,100 ${line} 100,100" fill="currentColor" fill-opacity=".14"/>` +
+    `<polyline points="${line}" fill="none" stroke="currentColor" stroke-width="1.6" ` +
+    'stroke-linejoin="round" vector-effect="non-scaling-stroke"/>' +
+    '</svg>';
+}
+
+function applySparks(sparks) {
+  for (const [key, cell] of rowCells) drawSpark(cell.spark, sparks[key]);
+}
+
+// Une serie absente (source en panne) laisse la courbe precedente en place.
+window.dash.onSparks((sparks) => {
+  Object.assign(lastSparks, sparks);
+  applySparks(lastSparks);
+});
 
 let staleMs = 120000;
 
@@ -426,7 +477,7 @@ async function loadChart() {
   $('chartArea').innerHTML = '<div class="chartMsg">chargement...</div>';
   const res = await window.dash.getChart(chartItem, chartRange);
   if (res.error) {
-    $('chartArea').innerHTML = `<div class="chartMsg">erreur : ${res.error}</div>`;
+    $('chartArea').replaceChildren(el('div', 'chartMsg', `erreur : ${res.error}`));
     return;
   }
   const pts = res.points;
@@ -521,6 +572,7 @@ function syncSettings() {
     c.classList.toggle('active', Number(c.dataset.w) === bw && Number(c.dataset.h) === bh)
   );
   $('coverTgl').checked = !!config.coverTaskbar;
+  $('siteNow').textContent = config.weatherSite?.label || '--';
 }
 
 $('themes').addEventListener('click', async (e) => {
@@ -546,9 +598,7 @@ async function buildDisplayList() {
     const tags = [d.primary ? 'principal' : null, d.scaleFactor !== 1 ? `${Math.round(d.scaleFactor * 100)} %` : null]
       .filter(Boolean)
       .join(' · ');
-    b.innerHTML =
-      `<span class="dName">${d.label}</span>` +
-      `<span class="dRes">${d.width} &times; ${d.height}${tags ? ' · ' + tags : ''}</span>`;
+    b.append(el('span', 'dName', d.label), el('span', 'dRes', `${d.width} × ${d.height}${tags ? ' · ' + tags : ''}`));
     b.addEventListener('click', async () => {
       config = await window.dash.snapToDisplay(d.id);
       syncSettings();
@@ -592,6 +642,32 @@ $('autoTgl').addEventListener('change', async (e) => {
   // On repositionne la case sur l'etat reellement applique : si Windows refuse
   // l'ecriture dans le registre, la case ne doit pas rester cochee a tort.
   e.target.checked = await window.dash.setAutoLaunch(e.target.checked);
+});
+
+/* ---------------- ville meteo ---------------- */
+
+let siteTimer;
+$('siteSearch').addEventListener('input', (e) => {
+  clearTimeout(siteTimer);
+  const q = e.target.value.trim();
+  if (q.length < 2) { $('siteResults').innerHTML = ''; return; }
+  siteTimer = setTimeout(async () => {
+    const places = await window.dash.searchPlaces(q);
+    const ul = $('siteResults');
+    ul.innerHTML = '';
+    for (const p of places) {
+      const li = el('li');
+      li.append(el('span', 'rsSym', p.label), el('span', 'rsVs', p.detail));
+      li.addEventListener('click', async () => {
+        config = await window.dash.setWeatherSite(p);
+        $('siteSearch').value = '';
+        ul.innerHTML = '';
+        syncSettings();
+      });
+      ul.appendChild(li);
+    }
+    if (!places.length) ul.innerHTML = '<li class="rsNone">Aucune ville trouvée</li>';
+  }, 350);
 });
 
 /* ---------------- ajout de lignes ---------------- */
@@ -651,7 +727,7 @@ $('cSearch').addEventListener('input', (e) => {
       const item = { kind: 'crypto', symbol: c.symbol, vs: c.vs, binance: c.binance };
       if (alreadyHas(item)) continue;
       const li = document.createElement('li');
-      li.innerHTML = `<span class="rsSym">${c.symbol}</span><span class="rsVs">/ ${c.vs}</span><span class="rsAdd">+</span>`;
+      li.append(el('span', 'rsSym', c.symbol), el('span', 'rsVs', `/ ${c.vs}`), el('span', 'rsAdd', '+'));
       li.addEventListener('click', () => addItem(item));
       ul.appendChild(li);
     }
@@ -672,6 +748,7 @@ $('cSearch').addEventListener('input', (e) => {
   $('fxFrom').value = 'EUR';
   $('fxTo').value = 'USD';
 
+  $('wSite').textContent = config.weatherSite?.label || '--';
   renderMarkets();
   syncSettings();
 })();
@@ -689,6 +766,7 @@ function renderWeather(d) {
   icon.src = `icons/weather/${d.icon}.svg`;
   icon.alt = d.desc;
   icon.hidden = false;
+  $('wSite').textContent = d.site;
   $('wTemp').textContent = Math.round(d.temp);
   $('wDesc').textContent = d.desc;
   $('wFeels').textContent = `Ressenti ${Math.round(d.feels)} °C`;

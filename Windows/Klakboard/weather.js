@@ -2,15 +2,18 @@
  * Meteo du jour, sans cle API.
  *
  *   previsions : Open-Meteo  /v1/forecast  (modele ECMWF/ICON, horaire + CAPE)
+ *   villes     : Open-Meteo  /v1/search    (geocodage)
  *   carte      : Windy, ouverte dans le navigateur (radar, vent, temperature)
  *
  * CAPE = energie convective disponible : indicateur du risque d'orage.
  */
 
-const SITE = { label: 'Paris (75)', lat: 48.8566, lon: 2.3522 };
+const DEFAULT_SITE = { label: 'Paris (75)', lat: 48.8566, lon: 2.3522, timezone: 'Europe/Paris' };
 
 const OPEN_METEO = 'https://api.open-meteo.com/v1/forecast';
-const CARD_URL = `https://www.windy.com/${SITE.lat}/${SITE.lon}?radar,${SITE.lat},${SITE.lon},9`;
+const GEOCODING = 'https://geocoding-api.open-meteo.com/v1/search';
+
+const mapUrl = (site) => `https://www.windy.com/${site.lat}/${site.lon}?radar,${site.lat},${site.lon},9`;
 
 const WMO = {
   0: 'Ciel dégagé', 1: 'Peu nuageux', 2: 'Partiellement nuageux', 3: 'Couvert',
@@ -56,11 +59,11 @@ function windDir(deg) {
   return COMPASS[Math.round(deg / 45) % 8];
 }
 
-async function getWeather() {
+async function getWeather(site = DEFAULT_SITE) {
   const params = new URLSearchParams({
-    latitude: String(SITE.lat),
-    longitude: String(SITE.lon),
-    timezone: 'Europe/Paris',
+    latitude: String(site.lat),
+    longitude: String(site.lon),
+    timezone: site.timezone || 'auto',
     forecast_days: '2',
     current: 'temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_gusts_10m,wind_direction_10m',
     daily: 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max',
@@ -79,7 +82,7 @@ async function getWeather() {
   const capeMax = Math.max(0, ...upcoming.map((h) => h.cape ?? 0));
 
   return {
-    site: SITE.label,
+    site: site.label,
     temp: d.current.temperature_2m,
     feels: d.current.apparent_temperature,
     desc: WMO[d.current.weather_code] || 'Inconnu',
@@ -97,4 +100,31 @@ async function getWeather() {
   };
 }
 
-module.exports = { getWeather, iconName, WMO, CARD_URL };
+/**
+ * Libelle court d'une ville : departement en France (« Paris (75) », trois
+ * chiffres outre-mer), code pays ailleurs (« Paris (BE) »).
+ */
+function placeLabel(r) {
+  const postcode = (r.postcodes || [])[0];
+  if (r.country_code === 'FR' && postcode) {
+    return `${r.name} (${postcode.slice(0, postcode.startsWith('97') ? 3 : 2)})`;
+  }
+  return r.country_code ? `${r.name} (${r.country_code})` : r.name;
+}
+
+/** Villes correspondant a `query`, avec de quoi les distinguer (departement, pays). */
+async function searchPlaces(query) {
+  const params = new URLSearchParams({ name: query, count: '8', language: 'fr', format: 'json' });
+  const res = await fetch(`${GEOCODING}?${params}`, { signal: AbortSignal.timeout(10000) });
+  if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
+  const { results = [] } = await res.json();
+  return results.map((r) => ({
+    label: placeLabel(r),
+    detail: [r.admin2 || r.admin1, r.country].filter(Boolean).join(', '),
+    lat: r.latitude,
+    lon: r.longitude,
+    timezone: r.timezone || 'auto',
+  }));
+}
+
+module.exports = { getWeather, searchPlaces, placeLabel, mapUrl, iconName, WMO, DEFAULT_SITE };

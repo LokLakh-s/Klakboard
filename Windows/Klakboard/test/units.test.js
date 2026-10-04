@@ -87,3 +87,40 @@ test('empreinte de telechargement', () => {
   assert.doesNotThrow(() => checkDigest(buf, null));
   assert.throws(() => checkDigest(Buffer.from('autre'), ok), /empreinte/);
 });
+
+test('libelle des villes meteo', () => {
+  const { placeLabel } = require('../weather');
+  assert.equal(placeLabel({ name: 'Paris', country_code: 'FR', postcodes: ['75001'] }), 'Paris (75)');
+  assert.equal(placeLabel({ name: 'Saint-Pierre', country_code: 'FR', postcodes: ['97410'] }), 'Saint-Pierre (974)');
+  assert.equal(placeLabel({ name: 'Paris', country_code: 'BE', postcodes: ['8000'] }), 'Paris (BE)');
+  assert.equal(placeLabel({ name: 'Nulle-part' }), 'Nulle-part');
+});
+
+test('token GitHub : chiffre a la premiere lecture, fichier en clair supprime', () => {
+  const os = require('os');
+  const { readToken, PLAIN } = require('../token');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'klakboard-token-'));
+  // Faux chiffrement reversible : seul le cheminement des fichiers est teste.
+  const safe = {
+    isEncryptionAvailable: () => true,
+    encryptString: (s) => Buffer.from([...s].reverse().join('')),
+    decryptString: (b) => [...b.toString()].reverse().join(''),
+  };
+  assert.equal(readToken(dir, safe), null);
+
+  fs.writeFileSync(path.join(dir, PLAIN), 'github_pat_abc\n');
+  assert.equal(readToken(dir, safe), 'github_pat_abc');
+  assert.ok(!fs.existsSync(path.join(dir, PLAIN)), 'le fichier en clair doit disparaitre');
+  assert.ok(!fs.readFileSync(path.join(dir, 'github-token.bin'), 'utf8').includes('github_pat_abc'));
+  assert.equal(readToken(dir, safe), 'github_pat_abc');
+
+  fs.writeFileSync(path.join(dir, PLAIN), 'github_pat_neuf');
+  assert.equal(readToken(dir, safe), 'github_pat_neuf');
+  assert.equal(readToken(dir, safe), 'github_pat_neuf');
+
+  // Sans chiffrement disponible, le fichier en clair reste en place et sert tel quel.
+  const noSeal = { isEncryptionAvailable: () => false };
+  fs.writeFileSync(path.join(dir, PLAIN), 'github_pat_clair');
+  assert.equal(readToken(dir, noSeal), 'github_pat_clair');
+  assert.ok(fs.existsSync(path.join(dir, PLAIN)));
+});

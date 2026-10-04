@@ -231,6 +231,59 @@ async function getChart(item, range) {
   return { points };
 }
 
+/* ---------------- mini-courbes des badges (12 h) ---------------- */
+
+const SPARK_MS = 12 * H;
+
+/**
+ * Les 12 dernieres heures de COTATION, et non les 12 dernieres heures tout
+ * court : marche ferme (week-end), la courbe montre la fin de la derniere seance.
+ */
+function lastTradingHours(points, ms) {
+  if (!points.length) return points;
+  const end = points[points.length - 1][0];
+  return points.filter((p) => p[0] >= end - ms);
+}
+
+/** Un seul appel Yahoo pour tous les metaux et devises (5 jours en 15 min, pour couvrir un week-end). */
+async function sparkYahoo(items, out) {
+  const symbols = [...new Set(items.map(yahooSymbolOf).filter(Boolean))];
+  if (!symbols.length) return;
+  const url = `${YQ}/v7/finance/spark?symbols=${encodeURIComponent(symbols.join(','))}&range=5d&interval=15m`;
+  const data = await getJson(url);
+  const bySym = new Map((data.spark?.result || []).map((r) => [r.symbol, r.response?.[0]]));
+  for (const it of items) {
+    const r = bySym.get(yahooSymbolOf(it));
+    if (r) out[keyOf(it)] = lastTradingHours(zipYahoo(r), SPARK_MS);
+  }
+}
+
+/** Binance : un appel par paire, 48 bougies de 15 min. */
+async function sparkCrypto(items, out) {
+  await Promise.all(items.map(async (it) => {
+    try {
+      const rows = await getJson(`${BINANCE}/klines?symbol=${it.binance}&interval=15m&limit=48`);
+      out[keyOf(it)] = rows.map((k) => [k[0], parseFloat(k[4])]);
+    } catch {
+      /* courbe absente pour cette paire, les autres restent */
+    }
+  }));
+}
+
+/**
+ * Series 12 h par ligne ({ cle: [[t, prix], ...] }). Les metaux restent sur le
+ * future Yahoo : la courbe est normalisee a l'affichage, un facteur constant
+ * (prime sur le spot) n'en change pas la forme.
+ */
+async function getSparks(items) {
+  const out = {};
+  await Promise.all([
+    sparkCrypto(items.filter((i) => i.kind === 'crypto'), out),
+    sparkYahoo(items.filter((i) => i.kind !== 'crypto'), out).catch(() => {}),
+  ]);
+  return out;
+}
+
 /* ---------------- catalogues pour l'ajout ---------------- */
 
 let binanceSymbolsCache = null;
@@ -279,5 +332,6 @@ module.exports = {
   keyOf,
   getQuotes,
   getChart,
+  getSparks,
   searchCrypto,
 };

@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('dash', {
   onQuotes: (cb) => ipcRenderer.on('quotes', (_e, d) => cb(d)),
+  onSparks: (cb) => ipcRenderer.on('sparks', (_e, d) => cb(d)),
   onSys: (cb) => ipcRenderer.on('sys', (_e, d) => cb(d)),
 
   getConfig: () => ipcRenderer.invoke('get-config'),
@@ -23,4 +24,6 @@ contextBridge.exposeInMainWorld('dash', {
   onOpenPanel: (cb) => ipcRenderer.on('open-panel', (_e, name) => cb(name)),
   onWeather: (cb) => ipcRenderer.on('weather', (_e, d) => cb(d)),
   openWeatherMap: () => ipcRenderer.invoke('open-weather-map'),
+  searchPlaces: (q) => ipcRenderer.invoke('search-places', q),
+  setWeatherSite: (site) => ipcRenderer.invoke('set-weather-site', site),
 });
