@@ -10,9 +10,15 @@ const weather = require('./weather');
 const updates = require('./updates');
 const display = require('./display');
 const token = require('./token');
+const autostart = require('./autostart');
 const i18n = require('./i18n');
 const { t } = i18n;
 const { version: APP_VERSION } = require('./package.json');
+
+// Native Wayland, the default since Electron 38, cannot place a window on a
+// given screen nor keep it on top: run under XWayland. The packaged launchers
+// pass the same switch (build.linux.executableArgs).
+if (process.platform === 'linux') app.commandLine.appendSwitch('ozone-platform', 'x11');
 
 /* ---------------- configuration ---------------- */
 
@@ -268,7 +274,9 @@ function refreshTrayMenu() {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(__dirname, 'build', 'icon.ico'));
+  // .ico is only read on Windows; tray.png has a @2x variant for Retina screens.
+  const file = { win32: 'icon.ico', darwin: 'tray.png' }[process.platform] || 'tray-linux.png';
+  const icon = nativeImage.createFromPath(path.join(__dirname, 'build', file));
   tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
   tray.setToolTip('Klakboard');
   refreshTrayMenu();
@@ -427,7 +435,7 @@ const readUpdateToken = () => token.readToken(app.getPath('userData'), safeStora
 
 // The app archive only runs on the Electron major it was built for.
 const findUpdate = () =>
-  updates.findUpdate(APP_VERSION, process.versions.electron.split('.')[0], readUpdateToken());
+  updates.findUpdate(APP_VERSION, process.versions.electron.split('.')[0], readUpdateToken(), process.platform);
 
 async function checkForUpdates({ manual = false } = {}) {
   let update;
@@ -482,6 +490,21 @@ async function installUpdate(update = pendingUpdate) {
   refreshTrayMenu();
   // No parent window: the dialog opens on the primary screen, where the user
   // clicked, not on the small dashboard screen.
+  if (update.kind === 'page') {
+    // macOS and Linux: no in-app install (signed bundle, read-only AppImage,
+    // root-owned package), the release page has the files.
+    const { response } = await dialog.showMessageBox({
+      type: 'info',
+      buttons: [t('upd.openPage'), t('upd.later')],
+      defaultId: 0,
+      cancelId: 1,
+      title: t('upd.dialogTitle'),
+      message: t('upd.message', { version: update.version, current: APP_VERSION }),
+      detail: t('upd.viaPage'),
+    });
+    if (response === 0 && /^https:\/\/github\.com\//.test(update.url)) shell.openExternal(update.url);
+    return;
+  }
   const viaInstaller = update.kind === 'installer';
   const { response } = await dialog.showMessageBox({
     type: 'question',
@@ -540,13 +563,16 @@ app.on('second-instance', showWindow);
 app.whenReady().then(() => {
   if (!isPrimaryInstance) return;
   config = loadConfig();
+  // A notification-area app: no Dock icon (LSUIElement in the packaged app).
+  if (process.platform === 'darwin') app.dock?.hide();
   applyLanguage();
   createWindow();
   createTray();
 
   // Safety net: with no title bar and above the taskbar, a crashed renderer would
   // leave a window that cannot be closed.
-  globalShortcut.register('CommandOrControl+Shift+Q', quitApp);
+  // Cmd+Shift+Q is "Log Out" on macOS.
+  globalShortcut.register(process.platform === 'darwin' ? 'Control+Alt+Q' : 'CommandOrControl+Shift+Q', quitApp);
 
   screen.on('display-added', onDisplaysChanged);
   screen.on('display-removed', onDisplaysChanged);
@@ -691,7 +717,17 @@ ipcMain.handle('set-resolution', (_e, { width, height }) => {
  * read from the OS, not `config`: the user may disable the entry from Task
  * Manager, and the config would then be wrong.
  */
+/** Command started at login: the AppImage file itself, not its temporary mount. */
+function launchCommand() {
+  const exe = process.env.APPIMAGE || process.execPath;
+  // In development process.execPath is electron: without the project path as
+  // argument, the entry would start an empty Electron.
+  const args = app.isPackaged ? [] : [path.resolve(process.argv[1] || '.')];
+  return process.platform === 'linux' ? [exe, ...args, '--ozone-platform=x11'] : [exe, ...args];
+}
+
 function autoLaunchState() {
+  if (process.platform === 'linux') return autostart.isEnabled();
   try {
     return app.getLoginItemSettings().openAtLogin;
   } catch {
@@ -703,13 +739,12 @@ ipcMain.handle('get-auto-launch', () => autoLaunchState());
 
 ipcMain.handle('set-auto-launch', (_e, on) => {
   try {
-    app.setLoginItemSettings({
-      openAtLogin: !!on,
-      path: process.execPath,
-      // In development process.execPath is electron.exe: without the project path as
-      // argument, the entry would start an empty Electron.
-      args: app.isPackaged ? [] : [path.resolve(process.argv[1] || '.')],
-    });
+    if (process.platform === 'linux') {
+      autostart.setEnabled(!!on, launchCommand());
+    } else {
+      const [exe, ...args] = launchCommand();
+      app.setLoginItemSettings({ openAtLogin: !!on, path: exe, args });
+    }
   } catch (err) {
     console.error('cannot set start at login:', err.message);
   }

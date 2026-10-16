@@ -360,11 +360,18 @@ function renderSys(s) {
     const vb = $('vramBar');
     vb.style.width = `${vpct}%`;
     vb.style.background = loadColor(vpct);
+    // Memory in MiB; no total for memory shared with the system (Apple silicon,
+    // Windows without nvidia-smi).
     const mib = 2 ** 20;
-    $('vramVal').textContent = `${fmtMem(s.gpu.memUsed * mib)} / ${fmtMem(s.gpu.memTotal * mib)} ${gbUnit}`;
-    $('gpuName').textContent = (s.gpu.name || '').replace(/NVIDIA |GeForce /g, '');
-    const fan = s.gpu.fan != null ? `${s.gpu.fan}%` : t('sys.na');
-    $('gpuFanTemp').textContent = t('sys.fanTemp', { fan, temp: s.gpu.temp ?? '--' });
+    const { memUsed, memTotal } = s.gpu;
+    $('vramVal').textContent = memUsed == null ? '--'
+      : memTotal ? `${fmtMem(memUsed * mib)} / ${fmtMem(memTotal * mib)} ${gbUnit}`
+      : `${fmtMem(memUsed * mib)} ${gbUnit}`;
+    $('gpuName').textContent = (s.gpu.name || '').replace(/NVIDIA |GeForce |AMD |Radeon\(TM\) /g, '');
+    $('gpuFanTemp').textContent = [
+      s.gpu.fan != null ? t('sys.fan', { fan: `${s.gpu.fan}%` }) : null,
+      s.gpu.temp != null ? `${s.gpu.temp}°C` : null,
+    ].filter(Boolean).join(' · ');
   } else {
     $('gpuCard').style.opacity = '.45';
     $('gpuUtil').textContent = t('sys.na');

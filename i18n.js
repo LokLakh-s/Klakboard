@@ -57,6 +57,8 @@
       'upd.viaInstaller': 'This version changes Klakboard\'s engine, so it goes through the full installer. '
         + 'Klakboard will close and the installer will open; Klakboard restarts at the end.',
       'upd.viaArchive': 'Klakboard will close, update and restart by itself.',
+      'upd.viaPage': 'Download it from its release page on GitHub.',
+      'upd.openPage': 'Open the download page',
       'upd.failed': 'Update failed',
       'upd.noDigest': 'GitHub has not published the file digest yet: try again in a minute',
       'upd.corrupt': 'Corrupted update file (SHA-256 digest mismatch)',
@@ -87,8 +89,8 @@
       'sys.resetTitle': 'Reset the totals',
       'sys.threads': '{n} threads',
       'sys.free': '{value} free',
-      'sys.noGpu': 'no NVIDIA GPU',
-      'sys.fanTemp': 'fan {fan} · {temp}°C',
+      'sys.noGpu': 'no GPU data',
+      'sys.fan': 'fan {fan}',
       'sys.na': 'n/a',
       'sys.peak': 'peak {value}',
 
@@ -184,6 +186,8 @@
       'upd.viaInstaller': 'Cette version change le moteur de Klakboard : elle passe par l\'installeur complet. '
         + 'Klakboard va se fermer et l\'installation s\'ouvrir ; Klakboard se relancera à la fin.',
       'upd.viaArchive': 'Klakboard va se fermer, se mettre à jour puis se relancer toute seule.',
+      'upd.viaPage': 'À télécharger depuis sa page de release sur GitHub.',
+      'upd.openPage': 'Ouvrir la page de téléchargement',
       'upd.failed': 'Mise à jour impossible',
       'upd.noDigest': 'Empreinte du fichier pas encore publiée par GitHub : réessayer dans une minute',
       'upd.corrupt': 'Fichier de mise à jour corrompu (empreinte SHA-256 différente)',
@@ -214,8 +218,8 @@
       'sys.resetTitle': 'Purger les cumuls',
       'sys.threads': '{n} threads',
       'sys.free': '{value} libres',
-      'sys.noGpu': 'aucun GPU NVIDIA',
-      'sys.fanTemp': 'vent. {fan} · {temp}°C',
+      'sys.noGpu': 'pas de données GPU',
+      'sys.fan': 'vent. {fan}',
       'sys.na': 'n/a',
       'sys.peak': 'pic {value}',
 

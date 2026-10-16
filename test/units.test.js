@@ -245,3 +245,117 @@ test('screen picked without a saved choice: small panels and bar screens only', 
   assert.equal(pick(d(2, 1366, 768)), null, 'laptop panel');
   assert.equal(findTargetDisplay([d(1, 960, 640)], 1, null), null, 'never the primary screen');
 });
+
+test('nvidia-smi line: values, [N/A] fields, malformed lines', () => {
+  const { parseNvidiaLine } = require('../platform/nvidia');
+  assert.deepEqual(parseNvidiaLine('Quadro RTX 4000, 6, 304, 8192, [N/A], 55'),
+    { name: 'Quadro RTX 4000', util: 6, memUsed: 304, memTotal: 8192, fan: null, temp: 55 });
+  assert.equal(parseNvidiaLine('NVIDIA-SMI has failed because it could not communicate with the driver.'), null);
+  assert.equal(parseNvidiaLine(''), null);
+});
+
+test('Linux network: physical interfaces only', () => {
+  const { parseProcNetDev } = require('../platform/linux');
+  const row = (name, rx, tx) => `${name.padStart(6)}: ${rx} 10 0 0 0 0 0 0 ${tx} 10 0 0 0 0 0 0`;
+  const text = [
+    'Inter-|   Receive                                                |  Transmit',
+    ' face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed',
+    row('lo', 500, 500), row('eth0', 1000, 200), row('wlan0', 30, 4),
+    row('docker0', 7, 7), row('veth1a2b', 7, 7), row('tailscale0', 9, 9), row('wg0', 9, 9), row('tun0', 9, 9),
+    '',
+  ].join('\n');
+  assert.deepEqual(parseProcNetDev(text), { rx: 1030, tx: 204 });
+});
+
+test('Linux AMD GPU from sysfs; other vendors ignored', () => {
+  const os = require('os');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'klakboard-drm-'));
+  const write = (rel, text) => {
+    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+    fs.writeFileSync(path.join(root, rel), text);
+  };
+  write('card0/device/vendor', '0x10de\n');                    // NVIDIA: handled by nvidia-smi
+  write('card1/device/vendor', '0x1002\n');
+  write('card1/device/gpu_busy_percent', '42\n');
+  write('card1/device/mem_info_vram_used', String(512 * 2 ** 20));
+  write('card1/device/mem_info_vram_total', String(8 * 2 ** 30));
+  write('card1/device/hwmon/hwmon3/temp1_input', '61000\n');
+  write('card1-DP-1/status', 'connected\n');
+  const { readAmdGpu } = require('../platform/linux');
+  assert.deepEqual(readAmdGpu(root), { name: 'AMD GPU', util: 42, memUsed: 512, memTotal: 8192, fan: null, temp: 61 });
+  fs.rmSync(path.join(root, 'card1'), { recursive: true });
+  assert.equal(readAmdGpu(root), null);
+  assert.equal(readAmdGpu(path.join(root, 'missing')), null);
+});
+
+test('Windows loops: network counters and GPU counters lines', () => {
+  const { parseNetLine, parseGpuLine } = require('../platform/win32');
+  assert.deepEqual(parseNetLine('123456 7890\r'), { rx: 123456, tx: 7890 });
+  assert.equal(parseNetLine(' '), null);
+  assert.deepEqual(parseGpuLine('{"name":"AMD Radeon RX 7800 XT","util":37.6,"mem":2147483648}'),
+    { name: 'AMD Radeon RX 7800 XT', util: 38, memUsed: 2048, memTotal: null, fan: null, temp: null });
+  assert.equal(parseGpuLine('{"name":"Intel UHD","util":140,"mem":0}').util, 100);
+  assert.equal(parseGpuLine('{"name":"Intel UHD","util":3,"mem":0}').memUsed, null);
+  assert.equal(parseGpuLine('{"name":"x","util":null,"mem":1}'), null);
+  assert.equal(parseGpuLine('not json'), null);
+});
+
+test('macOS sources: netstat, vm_stat and ioreg outputs', () => {
+  const { parseNetstat, parseVmStat, parseIoreg } = require('../platform/darwin');
+  const netstat = [
+    'Name       Mtu   Network       Address            Ipkts Ierrs     Ibytes    Opkts Oerrs     Obytes  Coll',
+    'lo0        16384 <Link#1>                         2000     0     900000     2000     0     900000     0',
+    'lo0        16384 127           127.0.0.1          2000     -     900000     2000     -     900000     -',
+    'en0        1500  <Link#11>     a4:83:e7:00:00:01 50000     0   70000000    30000     0    4000000     0',
+    'en0        1500  192.168.1     192.168.1.20      50000     -   70000000    30000     -    4000000     -',
+    'en1        1500  <Link#12>     a4:83:e7:00:00:02   100     0      20000      100     0       3000     0',
+    'utun3      1380  <Link#20>                         900     0     500000      900     0     400000     0',
+    'awdl0      1500  <Link#14>     6a:1f:00:00:00:03    10     0       1000       10     0       1000     0',
+  ].join('\n');
+  assert.deepEqual(parseNetstat(netstat), { rx: 70020000, tx: 4003000 });
+  assert.equal(parseNetstat('Name Mtu Network Address'), null);
+
+  const vmstat = [
+    'Mach Virtual Memory Statistics: (page size of 16384 bytes)',
+    'Pages free:                               10000.',
+    'Pages active:                            300000.',
+    'Pages inactive:                          200000.',
+    'Pages speculative:                         5000.',
+    'Pages throttled:                              0.',
+    'Pages wired down:                        150000.',
+  ].join('\n');
+  assert.equal(parseVmStat(vmstat), (10000 + 200000 + 5000) * 16384);
+  assert.equal(parseVmStat('garbage'), null);
+
+  const ioreg = '+-o AGXAcceleratorG14X  <class AGXAcceleratorG14X>\n'
+    + '    "PerformanceStatistics" = {"In use system memory"=1073741824,"Device Utilization %"=23,"Renderer Utilization %"=20}';
+  assert.deepEqual(parseIoreg(ioreg), { util: 23, memUsed: 1024 });
+  assert.equal(parseIoreg('+-o IOAccelerator'), null);
+});
+
+test('Linux start at login: XDG autostart entry, quoted command', () => {
+  const os = require('os');
+  const autostart = require('../autostart');
+  const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'klakboard-autostart-')), 'autostart');
+  assert.equal(autostart.isEnabled(dir), false);
+  autostart.setEnabled(true, ['/home/me/Apps/Klakboard 1.8.0.AppImage', '--ozone-platform=x11'], dir);
+  const entry = fs.readFileSync(path.join(dir, 'klakboard.desktop'), 'utf8');
+  assert.match(entry, /^Exec="\/home\/me\/Apps\/Klakboard 1\.8\.0\.AppImage" --ozone-platform=x11$/m);
+  assert.equal(autostart.isEnabled(dir), true);
+  autostart.setEnabled(false, [], dir);
+  assert.equal(autostart.isEnabled(dir), false);
+  assert.match(autostart.desktopEntry(['/opt/a"b$c']), /^Exec="\/opt\/a\\"b\\\$c"$/m);
+});
+
+test('update outside Windows: the release page', () => {
+  const { pickUpdate } = require('../updates');
+  const releases = [
+    { tag_name: 'klakboard-v1.8.0', html_url: 'https://github.com/LokLakh-s/Klakboard/releases/tag/klakboard-v1.8.0',
+      draft: false, prerelease: false, assets: [] },
+    { tag_name: 'klakboard-v1.7.0', html_url: 'https://github.com/x', draft: false, prerelease: false, assets: [] },
+  ];
+  assert.deepEqual(pickUpdate(releases, '1.7.0', '44', 'darwin'),
+    { version: '1.8.0', kind: 'page', url: 'https://github.com/LokLakh-s/Klakboard/releases/tag/klakboard-v1.8.0' });
+  assert.equal(pickUpdate(releases, '1.8.0', '44', 'linux'), null);
+  assert.equal(pickUpdate(releases, '1.7.0', '44', 'win32'), null, 'no file for Windows in this release');
+});

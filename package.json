@@ -15,8 +15,8 @@
   },
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/main.test.js test/units.test.js",
-    "dist": "electron-builder --win"
+    "test": "node --test test/main.test.js test/units.test.js test/system.smoke.test.js",
+    "dist": "electron-builder"
   },
   "devDependencies": {
     "electron": "^44.7.0",
@@ -44,7 +44,13 @@
       "display.js",
       "token.js",
       "i18n.js",
-      "icons/**/*"
+      "icons/**/*",
+      "autostart.js",
+      "platform/**/*",
+      "fonts/**/*",
+      "build/tray.png",
+      "build/tray@2x.png",
+      "build/tray-linux.png"
     ],
     "win": {
       "target": [
@@ -60,6 +66,38 @@
       "createStartMenuShortcut": true,
       "runAfterFinish": true,
       "include": "build/installer.nsh"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.utilities",
+      "icon": "build/logo.png",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "LSUIElement": true
+      },
+      "artifactName": "Klakboard-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "icon": "build/logo.png",
+      "maintainer": "Klakh <6003117+Klakh@users.noreply.github.com>",
+      "executableArgs": [
+        "--ozone-platform=x11"
+      ],
+      "artifactName": "Klakboard-${version}-${arch}.${ext}"
     }
   }
 }

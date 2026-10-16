@@ -40,16 +40,22 @@ const assetOf = (a) => ({ name: a.name, url: a.url, size: a.size, digest: a.dige
 
 /**
  * Picks the update among the releases (GitHub API format).
- * @returns {?{version, kind: 'asar'|'installer', asset}} the latest release
- *   newer than `currentVersion`, or null.
+ * Outside Windows the app cannot install itself: kind 'page', the release page
+ * to download from.
+ * @returns {?{version, kind: 'asar'|'installer'|'page', asset?, url?}} the latest
+ *   release newer than `currentVersion`, or null.
  */
-function pickUpdate(releases, currentVersion, electronMajor) {
+function pickUpdate(releases, currentVersion, electronMajor, platform = 'win32') {
   let best = null;
   for (const r of releases) {
     if (r.draft || r.prerelease || !r.tag_name.startsWith(TAG_PREFIX)) continue;
     const version = r.tag_name.slice(TAG_PREFIX.length);
     if (!/^\d+\.\d+\.\d+$/.test(version) || !isNewer(version, currentVersion)) continue;
     if (best && !isNewer(version, best.version)) continue;
+    if (platform !== 'win32') {
+      best = { version, kind: 'page', url: r.html_url };
+      continue;
+    }
     const asar = r.assets.find((a) => a.name === asarName(electronMajor));
     const setup = r.assets.find((a) => SETUP_RE.test(a.name));
     if (asar) best = { version, kind: 'asar', asset: assetOf(asar) };
@@ -58,13 +64,13 @@ function pickUpdate(releases, currentVersion, electronMajor) {
   return best;
 }
 
-async function findUpdate(currentVersion, electronMajor, token) {
+async function findUpdate(currentVersion, electronMajor, token, platform) {
   const res = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=30`, {
     headers: authHeaders('application/vnd.github+json', token),
     signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) throw new Error(t('upd.github', { status: res.status }));
-  return pickUpdate(await res.json(), currentVersion, electronMajor);
+  return pickUpdate(await res.json(), currentVersion, electronMajor, platform);
 }
 
 /**
