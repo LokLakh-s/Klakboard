@@ -833,6 +833,7 @@ function renderWeather(d) {
 window.dash.onWeather(({ data, error, needsSite: noSite }) => {
   needsSite = !!noSite;
   $('weather').title = needsSite ? 'Choisir la ville météo' : 'Ouvrir la carte météo';
+  document.querySelector('.wOpen').hidden = needsSite;
   if (needsSite) renderNoSite();
   else if (data) renderWeather(data);
   else if (error) $('wDesc').textContent = 'Météo indisponible';
