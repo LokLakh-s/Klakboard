@@ -16,9 +16,12 @@ const { t } = i18n;
 const { version: APP_VERSION } = require('./package.json');
 
 // Native Wayland, the default since Electron 38, cannot place a window on a
-// given screen nor keep it on top: run under XWayland. The packaged launchers
-// pass the same switch (build.linux.executableArgs).
-if (process.platform === 'linux') app.commandLine.appendSwitch('ozone-platform', 'x11');
+// given screen nor keep it on top: run under XWayland unless another platform
+// is asked for on the command line. The packaged launchers pass the same switch
+// (build.linux.executableArgs).
+if (process.platform === 'linux' && !app.commandLine.hasSwitch('ozone-platform')) {
+  app.commandLine.appendSwitch('ozone-platform', 'x11');
+}
 
 /* ---------------- configuration ---------------- */
 

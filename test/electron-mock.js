@@ -59,7 +59,7 @@ function createMock({ displays, primaryId, userData, locales }) {
   const electron = {
     app: {
       setAppUserModelId() {},
-      commandLine: { appendSwitch() {} },
+      commandLine: { appendSwitch() {}, hasSwitch: () => false },
       dock: { hide() {} },
       requestSingleInstanceLock: () => true,
       exit() {},
