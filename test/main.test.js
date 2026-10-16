@@ -9,18 +9,18 @@ const primary = () => makeDisplay(1, 0, 0, 2560, 1440);
 const small = () => makeDisplay(2, 2560, 0, 960, 640);
 const DEBOUNCE = 600; // > onDisplaysChanged delay
 
-test('recouvre le petit ecran au demarrage', async () => {
+test('covers the small screen at startup', async () => {
   const app = await loadMain({ displays: [primary(), small()] });
   assert.deepEqual(app.window.bounds, small().bounds);
   assert.equal(app.window.visible, true);
   assert.equal(app.window.onTop, 'screen-saver');
 });
 
-test('petit ecran debranche : masquee, puis de retour quand il revient', async () => {
+test('small screen unplugged: hidden, then back when it returns', async () => {
   const app = await loadMain({ displays: [primary(), small()] });
   app.unplug(2);
   await sleep(DEBOUNCE);
-  assert.equal(app.window.visible, false, "ne doit pas recouvrir l'ecran principal");
+  assert.equal(app.window.visible, false, 'must not cover the primary screen');
 
   app.plug(small());
   await sleep(DEBOUNCE);
@@ -29,7 +29,7 @@ test('petit ecran debranche : masquee, puis de retour quand il revient', async (
   assert.equal(app.window.onTop, 'screen-saver');
 });
 
-test('masquee par l\'utilisateur : ne reapparait pas au rebranchement', async () => {
+test('hidden by the user: stays hidden when the screen returns', async () => {
   const app = await loadMain({ displays: [primary(), small()] });
   app.clickTray(); // hide
   app.unplug(2);
@@ -39,7 +39,7 @@ test('masquee par l\'utilisateur : ne reapparait pas au rebranchement', async ()
   assert.equal(app.window.visible, false);
 });
 
-test('petit ecran absent au demarrage : attend, sans recouvrir le principal', async () => {
+test('small screen missing at startup: waits without covering the primary', async () => {
   const app = await loadMain({ displays: [primary()] });
   assert.equal(app.window.visible, false);
 
@@ -49,7 +49,7 @@ test('petit ecran absent au demarrage : attend, sans recouvrir le principal', as
   assert.deepEqual(app.window.bounds, small().bounds);
 });
 
-test('affichage demande sans son ecran : fenetre ordinaire sur le principal', async () => {
+test('shown without its screen: ordinary window on the primary', async () => {
   const app = await loadMain({ displays: [primary()] });
   app.clickTray();
   assert.equal(app.window.visible, true);
@@ -57,7 +57,7 @@ test('affichage demande sans son ecran : fenetre ordinaire sur le principal', as
   assert.deepEqual(app.window.bounds, { x: 800, y: 380, width: 960, height: 640 });
 });
 
-test("l'ecran choisi est retenu d'un demarrage a l'autre", async () => {
+test('the picked screen is remembered across launches', async () => {
   const first = await loadMain({ displays: [primary(), small()] });
   await first.invoke('snap-to-display', 1);
   assert.deepEqual(first.window.bounds, primary().bounds);
@@ -68,13 +68,13 @@ test("l'ecran choisi est retenu d'un demarrage a l'autre", async () => {
   assert.deepEqual(second.window.bounds, primary().bounds);
 });
 
-test('ecran retenu retrouve par sa resolution si son id a change', async () => {
+test('remembered screen found by resolution when its id changed', async () => {
   const config = { display: { id: 99, width: 960, height: 640 } };
   const app = await loadMain({ displays: [primary(), small()], config });
   assert.deepEqual(app.window.bounds, small().bounds);
 });
 
-test('mode fenetre : jamais au premier plan, position conservee', async () => {
+test('window mode: never on top, position kept', async () => {
   const bounds = { x: 100, y: 100, width: 800, height: 600 };
   const app = await loadMain({ displays: [primary(), small()], config: { coverTaskbar: false, bounds } });
   assert.deepEqual(app.window.bounds, bounds);
@@ -82,8 +82,8 @@ test('mode fenetre : jamais au premier plan, position conservee', async () => {
   assert.equal(app.window.onTop, false);
 });
 
-test('config illisible : mise de cote, pas ecrasee', async () => {
-  const app = await loadMain({ displays: [primary(), small()], config: '{"items": [tronque' });
+test('unreadable config: set aside, not overwritten', async () => {
+  const app = await loadMain({ displays: [primary(), small()], config: '{"items": [truncated' });
   const files = fs.readdirSync(app.userData);
   assert.ok(files.some((f) => f.startsWith('dashboard.json.illisible-')), files.join(', '));
   await app.invoke('set-theme', 'red');
@@ -92,7 +92,7 @@ test('config illisible : mise de cote, pas ecrasee', async () => {
   assert.ok(!files.includes('dashboard.json.tmp'));
 });
 
-test('resolution fenetree : passe en mode fenetre et y reste', async () => {
+test('windowed size: switches to window mode and stays there', async () => {
   const app = await loadMain({ displays: [primary(), small()] });
   const config = await app.invoke('set-resolution', { width: 800, height: 600 });
   assert.equal(config.coverTaskbar, false);
@@ -101,10 +101,10 @@ test('resolution fenetree : passe en mode fenetre et y reste', async () => {
 
   app.plug(makeDisplay(3, -1920, 0, 1920, 1080));
   await sleep(DEBOUNCE);
-  assert.equal(app.window.bounds.width, 800, 'un changement d\'ecran ne doit pas la ré-agrandir');
+  assert.equal(app.window.bounds.width, 800, 'a screen change must not enlarge it again');
 });
 
-test('ville meteo : aucune par defaut, choix valide retenu, saisie invalide ignoree', async () => {
+test('weather city: none by default, valid choice kept, invalid input ignored', async () => {
   const app = await loadMain({ displays: [primary(), small()] });
   let config = await app.invoke('get-config');
   assert.equal(config.weatherSite, null);
@@ -118,7 +118,7 @@ test('ville meteo : aucune par defaut, choix valide retenu, saisie invalide igno
   assert.equal(config.weatherSite.timezone, 'auto');
 });
 
-test('mode nuit : actif par defaut a 50 %, reglages bornes et retenus', async () => {
+test('night mode: on by default at 50 %, settings clamped and saved', async () => {
   const app = await loadMain({ displays: [primary(), small()] });
   let config = await app.invoke('get-config');
   assert.deepEqual(config.night, { enabled: true, dim: 0.5 });
@@ -128,4 +128,15 @@ test('mode nuit : actif par defaut a 50 %, reglages bornes et retenus', async ()
   assert.deepEqual(config.night, { enabled: false, dim: 0.9 });
   const saved = JSON.parse(fs.readFileSync(path.join(app.userData, 'dashboard.json'), 'utf8'));
   assert.deepEqual(saved.night, { enabled: false, dim: 0.9 });
+});
+
+test('language: follows the system, can be forced, invalid values ignored', async () => {
+  let app = await loadMain({ displays: [primary(), small()], locales: ['fr-CA', 'en-US'] });
+  assert.deepEqual(await app.invoke('get-language'), { setting: 'auto', lang: 'fr', locale: 'fr-CA' });
+
+  assert.deepEqual(await app.invoke('set-language', 'en'), { setting: 'en', lang: 'en', locale: 'en-US' });
+  assert.equal((await app.invoke('set-language', 'xx')).setting, 'auto');
+
+  app = await loadMain({ displays: [primary(), small()], locales: ['de-DE'] });
+  assert.deepEqual(await app.invoke('get-language'), { setting: 'auto', lang: 'en', locale: 'en-US' });
 });

@@ -43,6 +43,7 @@
       "updater.js",
       "display.js",
       "token.js",
+      "i18n.js",
       "icons/**/*"
     ],
     "win": {

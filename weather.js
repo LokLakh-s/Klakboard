@@ -13,23 +13,14 @@ const GEOCODING = 'https://geocoding-api.open-meteo.com/v1/search';
 
 const mapUrl = (site) => `https://www.windy.com/${site.lat}/${site.lon}?radar,${site.lat},${site.lon},9`;
 
-const WMO = {
-  0: 'Ciel dégagé', 1: 'Peu nuageux', 2: 'Partiellement nuageux', 3: 'Couvert',
-  45: 'Brouillard', 48: 'Brouillard givrant',
-  51: 'Bruine faible', 53: 'Bruine', 55: 'Bruine forte', 56: 'Bruine verglaçante', 57: 'Bruine verglaçante',
-  61: 'Pluie faible', 63: 'Pluie', 65: 'Pluie forte', 66: 'Pluie verglaçante', 67: 'Pluie verglaçante',
-  71: 'Neige faible', 73: 'Neige', 75: 'Neige forte', 77: 'Grains de neige',
-  80: 'Averses faibles', 81: 'Averses', 82: 'Averses violentes',
-  85: 'Averses de neige', 86: 'Fortes averses de neige',
-  95: 'Orage', 96: 'Orage avec grêle', 99: 'Orage violent avec grêle',
-};
+// WMO weather codes used by Open-Meteo; their descriptions are in i18n.js.
+const WMO_CODES = [0, 1, 2, 3, 45, 48, 51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 71, 73, 75, 77, 80, 81, 82, 85, 86, 95, 96, 99];
 
-const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
-
+/** Thunderstorm risk level from CAPE (J/kg): 'low', 'possible' or 'high'. */
 function stormLevel(cape) {
-  if (cape < 500) return 'faible';
+  if (cape < 500) return 'low';
   if (cape < 1500) return 'possible';
-  return 'fort';
+  return 'high';
 }
 
 /** Meteocons icon name (icons/weather/<name>.svg) for a WMO code. */
@@ -51,10 +42,6 @@ function iconName(code, isDay) {
   if (code === 96) return `thunderstorms-${dn}-hail`;
   if (code === 99) return `thunderstorms-extreme-${dn}-hail`;
   return `overcast-${dn}`;
-}
-
-function windDir(deg) {
-  return COMPASS[Math.round(deg / 45) % 8];
 }
 
 async function getWeather(site) {
@@ -86,7 +73,7 @@ async function getWeather(site) {
     site: site.label,
     temp: d.current.temperature_2m,
     feels: d.current.apparent_temperature,
-    desc: WMO[d.current.weather_code] || 'Inconnu',
+    code: d.current.weather_code,
     icon: iconName(d.current.weather_code, d.current.is_day === 1),
     min: d.daily.temperature_2m_min[0],
     max: d.daily.temperature_2m_max[0],
@@ -94,7 +81,7 @@ async function getWeather(site) {
     rainSum: d.daily.precipitation_sum[0],
     wind: Math.round(d.current.wind_speed_10m),
     gusts: Math.round(d.current.wind_gusts_10m),
-    windDir: windDir(d.current.wind_direction_10m),
+    windDeg: d.current.wind_direction_10m,
     windMax: Math.round(d.daily.wind_speed_10m_max[0]),
     storm: stormLevel(capeMax),
     // Sunrise and sunset of today and tomorrow (missing during polar night or day).
@@ -116,8 +103,8 @@ function placeLabel(r) {
 }
 
 /** Cities matching `query`, with what tells them apart (department, country). */
-async function searchPlaces(query) {
-  const params = new URLSearchParams({ name: query, count: '8', language: 'fr', format: 'json' });
+async function searchPlaces(query, language = 'en') {
+  const params = new URLSearchParams({ name: query, count: '8', language, format: 'json' });
   const res = await fetch(`${GEOCODING}?${params}`, { signal: AbortSignal.timeout(10000) });
   if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
   const { results = [] } = await res.json();
@@ -146,4 +133,4 @@ function nightWindow(now, sun) {
   return { on: now >= today.set, from: today.set, until };
 }
 
-module.exports = { getWeather, searchPlaces, placeLabel, mapUrl, nightWindow, iconName, WMO };
+module.exports = { getWeather, searchPlaces, placeLabel, mapUrl, nightWindow, iconName, stormLevel, WMO_CODES };

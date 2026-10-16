@@ -1,4 +1,6 @@
 const $ = (id) => document.getElementById(id);
+const { i18n } = window;
+const { t } = i18n;
 
 /** Element with text: data from an API or the OS never goes through innerHTML. */
 function el(tag, className, text) {
@@ -29,36 +31,55 @@ const labelOf = (it) =>
 
 /* ---------------- formatting ---------------- */
 
+// Number formats of the current locale, by number of decimals (cleared when
+// the language changes).
+const numFormats = new Map();
+function num(v, digits) {
+  let f = numFormats.get(digits);
+  if (!f) {
+    f = new Intl.NumberFormat(i18n.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    numFormats.set(digits, f);
+  }
+  return f.format(v);
+}
+
+/** Byte units of the interface language: B, kB, MB, GB, TB (o, ko, Mo, Go, To in French). */
+const units = () => t('units.bytes').split(',');
+
+const fmtTime = (ms, opts) => new Date(ms).toLocaleTimeString(i18n.locale, opts);
+
 function fmtPrice(v) {
   if (v == null) return '--';
   const a = Math.abs(v);
-  const d = a >= 1000 ? 2 : a >= 1 ? 3 : a >= 0.01 ? 4 : 6;
-  return new Intl.NumberFormat('fr-FR', {
-    minimumFractionDigits: d,
-    maximumFractionDigits: d,
-  }).format(v);
+  return num(v, a >= 1000 ? 2 : a >= 1 ? 3 : a >= 0.01 ? 4 : 6);
 }
 
 function fmtChange(c) {
   if (c == null) return '--';
-  return `${c >= 0 ? '+' : ''}${c.toFixed(2)}%`;
+  return `${c >= 0 ? '+' : ''}${num(c, 2)}%`;
 }
 
+/** Network totals, in decimal units like the rates. */
 function fmtBytes(b) {
-  if (b >= 1e12) return [(b / 1e12).toFixed(2), 'TB'];
-  if (b >= 1e9) return [(b / 1e9).toFixed(2), 'GB'];
-  if (b >= 1e6) return [(b / 1e6).toFixed(1), 'MB'];
-  if (b >= 1e3) return [(b / 1e3).toFixed(0), 'kB'];
-  return [String(Math.round(b)), 'B'];
+  const u = units();
+  if (b >= 1e12) return [num(b / 1e12, 2), u[4]];
+  if (b >= 1e9) return [num(b / 1e9, 2), u[3]];
+  if (b >= 1e6) return [num(b / 1e6, 1), u[2]];
+  if (b >= 1e3) return [num(b / 1e3, 0), u[1]];
+  return [num(b, 0), u[0]];
 }
 
 function fmtRate(bytesPerSec) {
   if (bytesPerSec == null) return ['--', ''];
   const b = bytesPerSec;
-  if (b >= 1e6) return [(b / 1e6).toFixed(1), 'MB/s'];
-  if (b >= 1e3) return [(b / 1e3).toFixed(0), 'kB/s'];
-  return [b.toFixed(0), 'B/s'];
+  const [u, s] = [units(), t('units.perSecond')];
+  if (b >= 1e6) return [num(b / 1e6, 1), u[2] + s];
+  if (b >= 1e3) return [num(b / 1e3, 0), u[1] + s];
+  return [num(b, 0), u[0] + s];
 }
+
+/** Memory in binary gigabytes, as the OS task managers show it. */
+const fmtMem = (bytes) => num(bytes / 2 ** 30, 1);
 
 /* ---------------- market badges ---------------- */
 
@@ -68,7 +89,9 @@ function renderMarkets() {
   rowCells.clear();
 
   if (!config.items.length) {
-    wrap.innerHTML = '<p class="emptyHint">Aucune ligne suivie.<br>Clic droit sur l’icône Klakboard → Ajouter une ligne…</p>';
+    const p = el('p', 'emptyHint', t('markets.empty'));
+    p.append(document.createElement('br'), t('markets.emptyHint'));
+    wrap.appendChild(p);
     return;
   }
 
@@ -95,7 +118,7 @@ function makeRemoveBtn(it, cls) {
   const rm = document.createElement('button');
   rm.className = cls;
   rm.innerHTML = '&#10005;';
-  rm.title = `Retirer ${labelOf(it)}`;
+  rm.title = t('markets.remove', { label: labelOf(it) });
   rm.addEventListener('click', (e) => { e.stopPropagation(); dropItem(it); });
   return rm;
 }
@@ -108,7 +131,7 @@ function makeBadge(it) {
   // shown instead ("XAU  Gold").
   const sym = it.kind === 'metal' ? it.code : it.kind === 'fx' ? it.from : it.symbol;
   const vs =
-    it.kind === 'metal' ? (catalogs.metals[it.code]?.label || 'USD')
+    it.kind === 'metal' ? t(`metal.${it.code}`)
     : it.kind === 'fx' ? it.to
     : it.vs;
 
@@ -184,7 +207,7 @@ function applyQuotes(quotes) {
     // Price kept from a previous cycle for lack of answer: greyed out, time in the tooltip.
     const stale = q.at != null && now - q.at > staleMs;
     cell.badge.classList.toggle('stale', stale);
-    cell.badge.title = stale ? `Dernière cotation à ${new Date(q.at).toLocaleTimeString('fr-FR')}` : '';
+    cell.badge.title = stale ? t('markets.lastQuote', { time: fmtTime(q.at) }) : '';
 
     cell.price.textContent = fmtPrice(q.price);
 
@@ -210,28 +233,35 @@ function applyQuotes(quotes) {
 
 /* Status dot: green when every source answered, red otherwise; details
    (source, error, time) in its tooltip. */
+let lastQuotesEvent = null;
+
+function renderStatusDot(d) {
+  const dot = $('statusDot');
+  const time = fmtTime(d.updatedAt);
+  if (d.errors?.length) {
+    dot.className = 'dot error';
+    dot.title = `${t('markets.failing', { time })}\n${d.errors.join('\n')}`;
+  } else {
+    dot.className = 'dot live';
+    dot.title = t('markets.ok', { time });
+  }
+}
+
 window.dash.onQuotes((d) => {
   staleMs = d.staleMs || staleMs;
   lastQuotes = d.quotes;
+  lastQuotesEvent = d;
   applyQuotes(d.quotes);
-  const dot = $('statusDot');
-  const at = new Date(d.updatedAt).toLocaleTimeString('fr-FR');
-  if (d.errors?.length) {
-    dot.className = 'dot error';
-    dot.title = `Marchés (${at}) — en panne :\n${d.errors.join('\n')}`;
-  } else {
-    dot.className = 'dot live';
-    dot.title = `Marchés à jour — ${at}`;
-  }
+  renderStatusDot(d);
 });
 
 /* ---------------- clock ---------------- */
 
 function tickClock() {
   const d = new Date();
-  $('clockTime').textContent = d.toLocaleTimeString('fr-FR');
-  $('dateDay').textContent = d.toLocaleDateString('fr-FR', { weekday: 'long' });
-  $('dateFull').textContent = d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  $('clockTime').textContent = d.toLocaleTimeString(i18n.locale);
+  $('dateDay').textContent = d.toLocaleDateString(i18n.locale, { weekday: 'long' });
+  $('dateFull').textContent = d.toLocaleDateString(i18n.locale, { day: 'numeric', month: 'long', year: 'numeric' });
 }
 tickClock();
 setInterval(tickClock, 1000);
@@ -274,7 +304,16 @@ function palette() {
   return themeColors;
 }
 
+let lastSys = null;
+
 window.dash.onSys((s) => {
+  lastSys = s;
+  renderSys(s);
+  const rate = s.net.rate || { down: null, up: null };
+  pushNetHistory(rate.down ?? 0, rate.up ?? 0);
+});
+
+function renderSys(s) {
   // CPU
   if (coreEls.length !== s.cpu.per.length) buildCores(s.cpu.per.length);
   // The colour is only written when it changes band: 32 `background` writes per
@@ -296,7 +335,7 @@ window.dash.onSys((s) => {
     .replace(/\b\d+-Core\b|\(R\)|\(TM\)|CPU|Processor|Intel|AMD|Core/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
-  $('cpuCount').textContent = `${s.cpu.per.length} threads`;
+  $('cpuCount').textContent = t('sys.threads', { n: s.cpu.per.length });
 
   // RAM
   const r = s.ram;
@@ -304,11 +343,11 @@ window.dash.onSys((s) => {
   const rb = $('ramBar');
   rb.style.width = `${r.pct}%`;
   rb.style.background = loadColor(r.pct);
-  // "19.4 / 68.5 GB" rather than "19.37 GB / 68.46 GB": at 24 px the long form
+  // "19.4 / 63.8 GB" rather than "19.37 GB / 63.79 GB": at 24 px the long form
   // takes 355 of 367 available px, and the 2nd decimal tells nothing.
-  const g = (b) => (b / 1e9).toFixed(1);
-  $('ramUsed').textContent = `${g(r.used)} / ${g(r.total)} GB`;
-  $('ramFree').textContent = `${g(r.free)} GB libres`;
+  const gbUnit = units()[3];
+  $('ramUsed').textContent = `${fmtMem(r.used)} / ${fmtMem(r.total)} ${gbUnit}`;
+  $('ramFree').textContent = t('sys.free', { value: `${fmtMem(r.free)} ${gbUnit}` });
 
   // GPU
   if (s.gpu) {
@@ -321,14 +360,15 @@ window.dash.onSys((s) => {
     const vb = $('vramBar');
     vb.style.width = `${vpct}%`;
     vb.style.background = loadColor(vpct);
-    $('vramVal').textContent = `${(s.gpu.memUsed / 1024).toFixed(1)} / ${(s.gpu.memTotal / 1024).toFixed(1)} Go`;
+    const mib = 2 ** 20;
+    $('vramVal').textContent = `${fmtMem(s.gpu.memUsed * mib)} / ${fmtMem(s.gpu.memTotal * mib)} ${gbUnit}`;
     $('gpuName').textContent = (s.gpu.name || '').replace(/NVIDIA |GeForce /g, '');
-    const fan = s.gpu.fan != null ? `${s.gpu.fan}%` : 'n/a';
-    $('gpuFanTemp').textContent = `vent. ${fan} · ${s.gpu.temp ?? '--'}°C`;
+    const fan = s.gpu.fan != null ? `${s.gpu.fan}%` : t('sys.na');
+    $('gpuFanTemp').textContent = t('sys.fanTemp', { fan, temp: s.gpu.temp ?? '--' });
   } else {
     $('gpuCard').style.opacity = '.45';
-    $('gpuUtil').textContent = 'n/a';
-    $('gpuName').textContent = 'aucun GPU NVIDIA';
+    $('gpuUtil').textContent = t('sys.na');
+    $('gpuName').textContent = t('sys.noGpu');
     $('gpuFanTemp').textContent = '';
   }
 
@@ -345,9 +385,7 @@ window.dash.onSys((s) => {
   const [ttv, ttu] = fmtBytes(s.totals.tx);
   $('totDown').textContent = `↓ ${trv} ${tru}`;
   $('totUp').textContent = `↑ ${ttv} ${ttu}`;
-
-  pushNetHistory(rate.down ?? 0, rate.up ?? 0);
-});
+}
 
 /* ---------------- throughput history ---------------- */
 
@@ -410,7 +448,7 @@ function drawNetSpark() {
   spark.down.setAttribute('points', dPath);
   spark.up.setAttribute('points', path(netHist.up));
   const [pv, pu] = fmtRate(peak);
-  spark.label.textContent = `pic ${pv} ${pu}`;
+  spark.label.textContent = t('sys.peak', { value: `${pv} ${pu}` });
 }
 
 /* ---------------- chart ---------------- */
@@ -425,7 +463,7 @@ function drawChart(points, up) {
   const area = $('chartArea');
   area.innerHTML = '';
   if (!points.length) {
-    area.innerHTML = '<div class="chartMsg">Pas de données pour cette période</div>';
+    area.replaceChildren(el('div', 'chartMsg', t('chart.empty')));
     return;
   }
 
@@ -477,11 +515,11 @@ function drawChart(points, up) {
 async function loadChart() {
   if (!chartItem) return;
   const req = ++chartReq;
-  $('chartArea').innerHTML = '<div class="chartMsg">chargement...</div>';
+  $('chartArea').replaceChildren(el('div', 'chartMsg', t('chart.loading')));
   const res = await window.dash.getChart(chartItem, chartRange);
   if (req !== chartReq) return;
   if (res.error) {
-    $('chartArea').replaceChildren(el('div', 'chartMsg', `erreur : ${res.error}`));
+    $('chartArea').replaceChildren(el('div', 'chartMsg', t('chart.error', { message: res.error })));
     return;
   }
   const pts = res.points;
@@ -570,6 +608,9 @@ function syncSettings() {
   document.querySelectorAll('#themes .chip').forEach((c) =>
     c.classList.toggle('active', c.dataset.theme === (config.theme || 'dark'))
   );
+  document.querySelectorAll('#languages .chip').forEach((c) =>
+    c.classList.toggle('active', c.dataset.lang === (config.language || 'auto'))
+  );
   const bw = config.bounds?.width;
   const bh = config.bounds?.height;
   document.querySelectorAll('#resList .chip').forEach((c) =>
@@ -603,7 +644,7 @@ async function buildDisplayList() {
   for (const d of displays) {
     const b = document.createElement('button');
     b.className = 'dispBtn' + (d.current ? ' current' : '');
-    const tags = [d.primary ? 'principal' : null, d.scaleFactor !== 1 ? `${Math.round(d.scaleFactor * 100)} %` : null]
+    const tags = [d.primary ? t('display.primary') : null, d.scaleFactor !== 1 ? `${Math.round(d.scaleFactor * 100)} %` : null]
       .filter(Boolean)
       .join(' · ');
     b.append(el('span', 'dName', d.label), el('span', 'dRes', `${d.width} × ${d.height}${tags ? ' · ' + tags : ''}`));
@@ -654,16 +695,21 @@ $('autoTgl').addEventListener('change', async (e) => {
 
 /* ---------------- night mode ---------------- */
 
-const hhmm = (ms) => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+const hhmm = (ms) => fmtTime(ms, { hour: '2-digit', minute: '2-digit' });
+let lastNight = null;
 
-window.dash.onNight(({ on, dim, from, until, current }) => {
+function renderNight({ on, dim, from, until, current }) {
   $('nightVeil').style.opacity = on ? String(dim) : '0';
-  const span = from ? `${hhmm(from)} → ${until ? hhmm(until) : '?'}` : `jusqu'à ${hhmm(until)}`;
+  const span = from ? `${hhmm(from)} → ${until ? hhmm(until) : '?'}` : t('night.until', { time: hhmm(until) });
+  const city = config.weatherSite?.label || t('night.theCity');
   $('nightHint').textContent = until || from
-    ? `${current ? 'Nuit en cours' : 'Prochaine nuit'} : ${span}, d'après le soleil à ${config.weatherSite?.label || 'la ville météo'}.`
-    : config.weatherSite
-      ? 'Heures du soleil pas encore connues (météo indisponible).'
-      : 'Choisir une ville météo : la nuit suit son coucher et son lever du soleil.';
+    ? t('night.line', { when: t(current ? 'night.current' : 'night.next'), span, city })
+    : t(config.weatherSite ? 'night.unknown' : 'night.noCity');
+}
+
+window.dash.onNight((n) => {
+  lastNight = n;
+  renderNight(n);
 });
 
 $('nightTgl').addEventListener('change', async (e) => {
@@ -700,7 +746,7 @@ $('siteSearch').addEventListener('input', (e) => {
       });
       ul.appendChild(li);
     }
-    if (!places.length) ul.innerHTML = '<li class="rsNone">Aucune ville trouvée</li>';
+    if (!places.length) ul.appendChild(el('li', 'rsNone', t('settings.noCity')));
   }, 350);
 });
 
@@ -730,11 +776,11 @@ async function addItem(item) {
 function buildMetalPicker() {
   const grid = $('metalPick');
   grid.innerHTML = '';
-  for (const [code, meta] of Object.entries(catalogs.metals)) {
+  for (const code of Object.keys(catalogs.metals)) {
     const item = { kind: 'metal', code };
     const b = document.createElement('button');
     b.className = 'pickBtn';
-    b.innerHTML = `<span class="pCode">${code}</span><span class="pLbl">${meta.label}</span>`;
+    b.append(el('span', 'pCode', code), el('span', 'pLbl', t(`metal.${code}`)));
     b.disabled = alreadyHas(item);
     b.addEventListener('click', () => addItem(item));
     grid.appendChild(b);
@@ -770,9 +816,51 @@ $('cSearch').addEventListener('input', (e) => {
 
 /* ---------------- startup ---------------- */
 
+/* ---------------- language ---------------- */
+
+/** Texts written in index.html, by their data-i18n* attributes. */
+function applyStaticTexts() {
+  document.documentElement.lang = i18n.lang;
+  for (const e of document.querySelectorAll('[data-i18n]')) e.textContent = t(e.dataset.i18n);
+  for (const e of document.querySelectorAll('[data-i18n-title]')) e.title = t(e.dataset.i18nTitle);
+  for (const e of document.querySelectorAll('[data-i18n-placeholder]')) e.placeholder = t(e.dataset.i18nPlaceholder);
+}
+
+/** Switches the page to `lang`/`locale` and redraws everything from the last data received. */
+function applyLanguage({ lang, locale }) {
+  i18n.setLanguage(lang, locale);
+  numFormats.clear();
+  applyStaticTexts();
+  tickClock();
+  renderMarkets();
+  applyQuotes(lastQuotes);
+  if (lastQuotesEvent) renderStatusDot(lastQuotesEvent);
+  if (lastSys) renderSys(lastSys);
+  drawNetSpark();
+  if (lastWeather) renderWeatherEvent(lastWeather);
+  if (lastNight) renderNight(lastNight);
+  if (!$('chartOv').hidden) loadChart();
+  if (!$('addOv').hidden) buildMetalPicker();
+  if (!$('setOv').hidden) buildDisplayList();
+  syncSettings();
+}
+
+$('languages').addEventListener('click', async (e) => {
+  const b = e.target.closest('.chip');
+  if (!b) return;
+  const res = await window.dash.setLanguage(b.dataset.lang);
+  config.language = res.setting;
+  applyLanguage(res);
+});
+
+$('menuBtn').addEventListener('click', () => window.dash.showMenu());
+
+/* ---------------- startup ---------------- */
+
 (async function init() {
   config = await window.dash.getConfig();
   catalogs = await window.dash.getCatalogs();
+  applyLanguage(await window.dash.getLanguage());
   document.documentElement.dataset.theme = config.theme || 'dark';
   themeColors = null;
 
@@ -783,8 +871,6 @@ $('cSearch').addEventListener('input', (e) => {
   $('fxTo').value = 'USD';
 
   $('wSite').textContent = config.weatherSite?.label || '--';
-  renderMarkets();
-  syncSettings();
 })();
 
 window.addEventListener('resize', () => {
@@ -793,7 +879,8 @@ window.addEventListener('resize', () => {
 
 /* ---------------- weather ---------------- */
 
-const STORM_CLASS = { faible: '', possible: 'warn', fort: 'alert' };
+const STORM_CLASS = { low: '', possible: 'warn', high: 'alert' };
+let lastWeather = null;
 
 // True until a weather city is picked (first launch).
 let needsSite = false;
@@ -803,38 +890,47 @@ function renderNoSite() {
   $('wIcon').hidden = true;
   $('wSite').textContent = '--';
   $('wTemp').textContent = '--';
-  $('wDesc').textContent = 'Choisir une ville';
-  $('wFeels').textContent = 'Cliquer pour rechercher';
+  $('wDesc').textContent = t('weather.pickCity');
+  $('wFeels').textContent = t('weather.clickToSearch');
   for (const id of ['wMinMax', 'wRain', 'wWind', 'wStorm']) $(id).textContent = '--';
   $('wStorm').className = 'wVal';
 }
 
 function renderWeather(d) {
+  const key = `wmo.${d.code}`;
+  const desc = key in i18n.STRINGS.en ? t(key) : t('weather.unknown');
   const icon = $('wIcon');
   icon.src = `icons/weather/${d.icon}.svg`;
-  icon.alt = d.desc;
+  icon.alt = desc;
   icon.hidden = false;
   $('wSite').textContent = d.site;
   $('wTemp').textContent = Math.round(d.temp);
-  $('wDesc').textContent = d.desc;
-  $('wFeels').textContent = `Ressenti ${Math.round(d.feels)} °C`;
+  $('wDesc').textContent = desc;
+  $('wFeels').textContent = t('weather.feels', { temp: Math.round(d.feels) });
   $('wMinMax').textContent = `${Math.round(d.min)}° · ${Math.round(d.max)}°`;
-  $('wRain').textContent = `${d.rainSum} mm`;
-  $('wRainLbl').textContent = `Pluie · ${d.rainProb} %`;
-  $('wWind').textContent = `${d.wind} ${d.windDir}`;
-  $('wWindLbl').textContent = `Vent · raf. ${d.gusts}`;
+  $('wRain').textContent = `${num(d.rainSum, d.rainSum % 1 ? 1 : 0)} mm`;
+  $('wRainLbl').textContent = t('weather.rainProb', { prob: d.rainProb });
+  const compass = t('compass').split(',');
+  $('wWind').textContent = `${d.wind} ${compass[Math.round(d.windDeg / 45) % 8]}`;
+  $('wWindLbl').textContent = t('weather.windGusts', { gusts: d.gusts });
   const storm = $('wStorm');
-  storm.textContent = d.storm;
-  storm.className = `wVal ${STORM_CLASS[d.storm]}`;
+  storm.textContent = t(`storm.${d.storm}`);
+  storm.className = `wVal ${STORM_CLASS[d.storm] || ''}`;
 }
 
-window.dash.onWeather(({ data, error, needsSite: noSite }) => {
+function renderWeatherEvent({ data, error, needsSite: noSite }) {
   needsSite = !!noSite;
-  $('weather').title = needsSite ? 'Choisir la ville météo' : 'Ouvrir la carte météo';
+  $('weather').title = t(needsSite ? 'weather.pickCityTitle' : 'weather.openMap');
   document.querySelector('.wOpen').hidden = needsSite;
   if (needsSite) renderNoSite();
   else if (data) renderWeather(data);
-  else if (error) $('wDesc').textContent = 'Météo indisponible';
+  else if (error) $('wDesc').textContent = t('weather.unavailable');
+}
+
+window.dash.onWeather((w) => {
+  // An error keeps the last weather on screen, only its description changes.
+  if (w.data || w.needsSite) lastWeather = w;
+  renderWeatherEvent(w);
 });
 
 async function openWeather() {

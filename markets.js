@@ -13,6 +13,7 @@
  */
 
 const { version } = require('./package.json');
+const { t } = require('./i18n');
 
 const UA = `Klakboard/${version}`; // Yahoo blocks curl/python, not custom user agents
 const YQ = 'https://query1.finance.yahoo.com';
@@ -22,12 +23,13 @@ const BINANCE = 'https://data-api.binance.vision/api/v3';
 
 /* ---------------- metals catalog ---------------- */
 
+// Names are in i18n.js (metal.<code>).
 const METALS = {
-  XAU: { label: 'Or', yahoo: 'GC=F' },
-  XAG: { label: 'Argent', yahoo: 'SI=F' },
-  XPT: { label: 'Platine', yahoo: 'PL=F' },
-  XPD: { label: 'Palladium', yahoo: 'PA=F' },
-  HG: { label: 'Cuivre', yahoo: 'HG=F' },
+  XAU: { yahoo: 'GC=F' },
+  XAG: { yahoo: 'SI=F' },
+  XPT: { yahoo: 'PL=F' },
+  XPD: { yahoo: 'PA=F' },
+  HG: { yahoo: 'HG=F' },
 };
 
 const keyOf = (it) =>
@@ -51,11 +53,11 @@ async function getJson(url, opts = {}) {
       ...opts,
     });
   } catch (err) {
-    if (err.name === 'TimeoutError') throw new Error(`délai dépassé sur ${host}`);
-    throw new Error(`${host} injoignable`);
+    if (err.name === 'TimeoutError') throw new Error(t('err.timeout', { host }));
+    throw new Error(t('err.unreachable', { host }));
   }
   if (!res.ok) {
-    const err = new Error(`HTTP ${res.status} sur ${host}`);
+    const err = new Error(t('err.http', { status: res.status, host }));
     err.status = res.status;
     throw err;
   }
@@ -93,7 +95,7 @@ async function fetchCrypto(items, out, errors) {
       try {
         data.push(await getJson(`${BINANCE}/ticker/24hr?symbol=${encodeURIComponent(it.binance)}`));
       } catch (e) {
-        errors.push(`Binance (${it.symbol}/${it.vs}) : ${e.message}`);
+        errors.push(t('err.source', { source: `Binance (${it.symbol}/${it.vs})`, message: e.message }));
       }
     }));
   }
@@ -144,7 +146,7 @@ async function overlayMetalSpot(items, out, errors) {
         }
       } catch (err) {
         // Yahoo's future price stays on screen as a fallback (~1 % above spot).
-        errors.push(`gold-api (${it.code}) : ${err.message}`);
+        errors.push(t('err.source', { source: `gold-api (${it.code})`, message: err.message }));
       }
     })
   );
@@ -162,8 +164,10 @@ async function getQuotes(items) {
   const fx = items.filter((i) => i.kind === 'fx');
 
   await Promise.all([
-    fetchCrypto(crypto, out, errors).catch((err) => errors.push(`Binance : ${err.message}`)),
-    fetchYahooSpark([...metals, ...fx], out).catch((err) => errors.push(`Yahoo : ${err.message}`)),
+    fetchCrypto(crypto, out, errors)
+      .catch((err) => errors.push(t('err.source', { source: 'Binance', message: err.message }))),
+    fetchYahooSpark([...metals, ...fx], out)
+      .catch((err) => errors.push(t('err.source', { source: 'Yahoo', message: err.message }))),
   ]);
   await overlayMetalSpot(metals, out, errors);
 
@@ -226,7 +230,7 @@ async function chartYahoo(item, range) {
   const url = `${YQ}/v8/finance/chart/${encodeURIComponent(sym)}?range=${yRange}&interval=${interval}`;
   const data = await getJson(url);
   const result = data.chart?.result?.[0];
-  if (!result) throw new Error('série Yahoo vide');
+  if (!result) throw new Error(t('err.yahooEmpty'));
   return clip(zipYahoo(result), p.ms);
 }
 

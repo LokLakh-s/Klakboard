@@ -12,14 +12,14 @@ const Module = require('module');
 const APP_DIR = path.join(__dirname, '..');
 
 function makeDisplay(id, x, y, width, height) {
-  return { id, label: `ecran ${id}`, bounds: { x, y, width, height }, workArea: { x, y, width, height: height - 40 }, scaleFactor: 1 };
+  return { id, label: `screen ${id}`, bounds: { x, y, width, height }, workArea: { x, y, width, height: height - 40 }, scaleFactor: 1 };
 }
 
 function intersects(a, b) {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
-function createMock({ displays, primaryId, userData }) {
+function createMock({ displays, primaryId, userData, locales }) {
   const listeners = {};
   const on = (bag) => (event, cb) => { (bag[event] ||= []).push(cb); };
   const emit = (bag, event, ...args) => (bag[event] || []).forEach((cb) => cb(...args));
@@ -66,6 +66,7 @@ function createMock({ displays, primaryId, userData }) {
       whenReady: () => Promise.resolve(),
       getPath: () => userData,
       getLoginItemSettings: () => ({ openAtLogin: false }),
+      getPreferredSystemLanguages: () => locales,
       setLoginItemSettings() {},
       isPackaged: false,
     },
@@ -103,12 +104,12 @@ function createMock({ displays, primaryId, userData }) {
  * Loads a fresh main.js (empty caches) with the given screens and config.
  * @returns the mock driver, once app.whenReady() has run.
  */
-async function loadMain({ displays, primaryId = displays[0].id, config } = {}) {
+async function loadMain({ displays, primaryId = displays[0].id, config, locales = ['en-US'] } = {}) {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'klakboard-test-'));
   if (config !== undefined) {
     fs.writeFileSync(path.join(userData, 'dashboard.json'), typeof config === 'string' ? config : JSON.stringify(config));
   }
-  const mock = createMock({ displays, primaryId, userData });
+  const mock = createMock({ displays, primaryId, userData, locales });
   mock.userData = userData;
 
   const originalLoad = Module._load;

@@ -10,6 +10,7 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const { t } = require('./i18n');
 
 const REPO = 'LokLakh-s/Klakboard';
 const TAG_PREFIX = 'klakboard-v';
@@ -62,7 +63,7 @@ async function findUpdate(currentVersion, electronMajor, token) {
     headers: authHeaders('application/vnd.github+json', token),
     signal: AbortSignal.timeout(15000),
   });
-  if (!res.ok) throw new Error(`GitHub ${res.status}`);
+  if (!res.ok) throw new Error(t('upd.github', { status: res.status }));
   return pickUpdate(await res.json(), currentVersion, electronMajor);
 }
 
@@ -74,10 +75,10 @@ async function findUpdate(currentVersion, electronMajor, token) {
 function checkDigest(buf, digest) {
   const [algo, expected] = (digest || '').split(':');
   if (algo !== 'sha256' || !expected) {
-    throw new Error('Empreinte du fichier pas encore publiée par GitHub : réessayer dans une minute');
+    throw new Error(t('upd.noDigest'));
   }
   const actual = crypto.createHash('sha256').update(buf).digest('hex');
-  if (actual !== expected) throw new Error('Fichier de mise à jour corrompu (empreinte SHA-256 différente)');
+  if (actual !== expected) throw new Error(t('upd.corrupt'));
 }
 
 /** Downloads a release file to `dest`, after checking its size and digest. */
@@ -87,9 +88,9 @@ async function downloadAsset(asset, token, dest) {
     redirect: 'follow',
     signal: AbortSignal.timeout(10 * 60 * 1000),
   });
-  if (!res.ok) throw new Error(`Téléchargement ${res.status}`);
+  if (!res.ok) throw new Error(t('upd.download', { status: res.status }));
   const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length !== asset.size) throw new Error('Fichier de mise à jour incomplet');
+  if (buf.length !== asset.size) throw new Error(t('upd.incomplete'));
   checkDigest(buf, asset.digest);
   fs.writeFileSync(dest, buf);
 }

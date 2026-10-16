@@ -10,6 +10,8 @@ const weather = require('./weather');
 const updates = require('./updates');
 const display = require('./display');
 const token = require('./token');
+const i18n = require('./i18n');
+const { t } = i18n;
 const { version: APP_VERSION } = require('./package.json');
 
 /* ---------------- configuration ---------------- */
@@ -19,6 +21,7 @@ const DEFAULT_CONFIG = {
   coverTaskbar: true,
   zoom: 1,
   theme: 'dark',
+  language: 'auto',   // 'auto' (system), or one of i18n.LANGUAGES
   netTotals: { rx: 0, tx: 0 },
   bounds: null,
   display: null,   // screen picked in "Full screen on…": { id, width, height }
@@ -81,7 +84,7 @@ function loadConfig() {
     try {
       fs.renameSync(file, `${file}.illisible-${Date.now()}`);
     } catch {}
-    console.error('config illisible, valeurs par defaut:', err.message);
+    console.error('unreadable config, using defaults:', err.message);
     return defaultConfig();
   }
 }
@@ -102,7 +105,7 @@ function saveConfig() {
     try {
       fs.writeFileSync(file, data);
     } catch (err) {
-      console.error('sauvegarde config impossible:', err.message);
+      console.error('cannot save config:', err.message);
     }
   }
 }
@@ -158,6 +161,9 @@ function createWindow() {
   // The window only shows index.html: no navigation, no pop-up (the weather map
   // opens in the browser, through shell).
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // Same menu as the tray icon, which some desktops do not show: right click,
+  // or long press on a touch screen.
+  mainWindow.webContents.on('context-menu', showMenu);
   mainWindow.webContents.on('will-navigate', (e) => e.preventDefault());
 
   mainWindow.loadFile('index.html');
@@ -187,6 +193,16 @@ function createWindow() {
     }
   });
   mainWindow.on('closed', () => { mainWindow = null; });
+}
+
+/* ---------------- language ---------------- */
+
+/** Applies config.language to the main process strings and the tray menu. */
+function applyLanguage() {
+  const { lang, locale } = i18n.resolve(config.language, app.getPreferredSystemLanguages());
+  i18n.setLanguage(lang, locale);
+  refreshTrayMenu();
+  return { setting: config.language, lang, locale };
 }
 
 /* ---------------- notification area ---------------- */
@@ -225,26 +241,30 @@ function buildTrayMenu() {
   const template = [];
   if (pendingUpdate) {
     template.push(
-      { label: `⬇  Installer la mise à jour ${pendingUpdate.version}…`, click: () => installUpdate() },
+      { label: t('tray.install', { version: pendingUpdate.version }), click: () => installUpdate() },
       { type: 'separator' },
     );
   }
   template.push(
-    { label: 'Afficher / masquer', click: toggleWindow },
-    { label: 'Rafraîchir les cours', click: refreshMarkets },
-    { label: 'Ajouter une ligne…', click: () => openPanel('add') },
-    { label: 'Réglages…', click: () => openPanel('settings') },
+    { label: t('tray.toggle'), click: toggleWindow },
+    { label: t('tray.refresh'), click: refreshMarkets },
+    { label: t('tray.add'), click: () => openPanel('add') },
+    { label: t('tray.settings'), click: () => openPanel('settings') },
     { type: 'separator' },
-    { label: `Vérifier les mises à jour (v${APP_VERSION})`, click: () => checkForUpdates({ manual: true }) },
-    { label: 'Quitter Klakboard', click: quitApp },
+    { label: t('tray.check', { version: APP_VERSION }), click: () => checkForUpdates({ manual: true }) },
+    { label: t('tray.quit'), click: quitApp },
   );
   return Menu.buildFromTemplate(template);
+}
+
+function showMenu() {
+  if (mainWindow) buildTrayMenu().popup({ window: mainWindow });
 }
 
 function refreshTrayMenu() {
   if (!tray) return;
   tray.setContextMenu(buildTrayMenu());
-  tray.setToolTip(pendingUpdate ? `Klakboard — mise à jour ${pendingUpdate.version} disponible` : 'Klakboard');
+  tray.setToolTip(pendingUpdate ? t('tray.tooltipUpdate', { version: pendingUpdate.version }) : 'Klakboard');
 }
 
 function createTray() {
@@ -403,7 +423,6 @@ function applyNight() {
 
 /* ---------------- updates ---------------- */
 
-const tokenPath = () => path.join(app.getPath('userData'), token.PLAIN);
 const readUpdateToken = () => token.readToken(app.getPath('userData'), safeStorage);
 
 // The app archive only runs on the Electron major it was built for.
@@ -415,16 +434,13 @@ async function checkForUpdates({ manual = false } = {}) {
   try {
     update = await findUpdate();
   } catch (err) {
-    console.error('verification des mises a jour impossible:', err.message);
-    if (manual) {
-      dialog.showErrorBox('Vérification impossible',
-        `${err.message}\n\nPour changer de token GitHub, le déposer en clair dans : ${tokenPath()}`);
-    }
+    console.error('update check failed:', err.message);
+    if (manual) dialog.showErrorBox(t('upd.checkFailed'), err.message);
     return;
   }
   if (!update) {
     if (manual) {
-      dialog.showMessageBox({ type: 'info', title: 'Klakboard', message: `Klakboard ${APP_VERSION} est à jour.` });
+      dialog.showMessageBox({ type: 'info', title: 'Klakboard', message: t('upd.upToDate', { version: APP_VERSION }) });
     }
     return;
   }
@@ -434,8 +450,8 @@ async function checkForUpdates({ manual = false } = {}) {
   refreshTrayMenu();
   if (Notification.isSupported()) {
     const n = new Notification({
-      title: `Klakboard ${update.version} disponible`,
-      body: 'Cliquer ici pour mettre à jour (ou clic droit sur l\'icône de Klakboard).',
+      title: t('upd.notifTitle', { version: update.version }),
+      body: t('upd.notifBody'),
     });
     n.on('click', () => installUpdate());
     n.show();
@@ -469,15 +485,12 @@ async function installUpdate(update = pendingUpdate) {
   const viaInstaller = update.kind === 'installer';
   const { response } = await dialog.showMessageBox({
     type: 'question',
-    buttons: ['Mettre à jour', 'Plus tard'],
+    buttons: [t('upd.update'), t('upd.later')],
     defaultId: 0,
     cancelId: 1,
-    title: 'Mise à jour Klakboard',
-    message: `Klakboard ${update.version} est disponible (version actuelle : ${APP_VERSION}).`,
-    detail: viaInstaller
-      ? 'Cette version change le moteur de Klakboard : elle passe par l\'installeur complet. '
-        + 'Klakboard va se fermer et l\'installation s\'ouvrir ; Klakboard se relancera à la fin.'
-      : 'Klakboard va se fermer, se mettre à jour puis se relancer toute seule.',
+    title: t('upd.dialogTitle'),
+    message: t('upd.message', { version: update.version, current: APP_VERSION }),
+    detail: viaInstaller ? t('upd.viaInstaller') : t('upd.viaArchive'),
   });
   if (response !== 0) return;
 
@@ -508,7 +521,7 @@ async function installUpdate(update = pendingUpdate) {
     quitApp();
   } catch (err) {
     installing = false;
-    dialog.showErrorBox('Mise à jour impossible', err.message);
+    dialog.showErrorBox(t('upd.failed'), err.message);
   }
 }
 
@@ -527,6 +540,7 @@ app.on('second-instance', showWindow);
 app.whenReady().then(() => {
   if (!isPrimaryInstance) return;
   config = loadConfig();
+  applyLanguage();
   createWindow();
   createTray();
 
@@ -596,6 +610,17 @@ app.on('before-quit', () => {
 /* ---------------- IPC ---------------- */
 
 ipcMain.handle('get-config', () => config);
+ipcMain.handle('get-language', () => ({
+  setting: config.language,
+  ...i18n.resolve(config.language, app.getPreferredSystemLanguages()),
+}));
+ipcMain.handle('show-menu', () => showMenu());
+
+ipcMain.handle('set-language', (_e, setting) => {
+  config.language = setting === 'auto' || i18n.LANGUAGES.includes(setting) ? setting : 'auto';
+  saveConfig();
+  return applyLanguage();
+});
 ipcMain.handle('get-catalogs', () => ({
   metals: markets.METALS,
   fxCurrencies: markets.FX_CURRENCIES,
@@ -616,7 +641,7 @@ ipcMain.handle('get-displays', () => {
     : screen.getPrimaryDisplay().id;
   return screen.getAllDisplays().map((d, i) => ({
     id: d.id,
-    label: d.label || `Écran ${i + 1}`,
+    label: d.label || t('display.fallback', { n: i + 1 }),
     width: d.bounds.width,
     height: d.bounds.height,
     x: d.bounds.x,
@@ -686,7 +711,7 @@ ipcMain.handle('set-auto-launch', (_e, on) => {
       args: app.isPackaged ? [] : [path.resolve(process.argv[1] || '.')],
     });
   } catch (err) {
-    console.error('demarrage automatique impossible:', err.message);
+    console.error('cannot set start at login:', err.message);
   }
   const real = autoLaunchState();
   config.autoLaunch = real;
@@ -742,7 +767,7 @@ ipcMain.handle('remove-item', (_e, item) => {
 
 ipcMain.handle('get-chart', async (_e, { item: raw, range } = {}) => {
   const item = markets.normalizeItem(raw);
-  if (!item) return { points: [], error: 'ligne inconnue' };
+  if (!item) return { points: [], error: t('err.unknownRow') };
   try {
     return { ...(await markets.getChart(item, range)), error: null };
   } catch (err) {
@@ -781,7 +806,7 @@ ipcMain.handle('set-night', (_e, { enabled, dim } = {}) => {
 
 ipcMain.handle('search-places', async (_e, q) => {
   try {
-    return await weather.searchPlaces(String(q).slice(0, 80));
+    return await weather.searchPlaces(String(q).slice(0, 80), i18n.lang);
   } catch {
     return [];
   }

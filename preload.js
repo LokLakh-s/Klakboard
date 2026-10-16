@@ -6,6 +6,9 @@ contextBridge.exposeInMainWorld('dash', {
   onSys: (cb) => ipcRenderer.on('sys', (_e, d) => cb(d)),
 
   getConfig: () => ipcRenderer.invoke('get-config'),
+  getLanguage: () => ipcRenderer.invoke('get-language'),
+  setLanguage: (setting) => ipcRenderer.invoke('set-language', setting),
+  showMenu: () => ipcRenderer.invoke('show-menu'),
   getCatalogs: () => ipcRenderer.invoke('get-catalogs'),
   setRefresh: (ms) => ipcRenderer.invoke('set-refresh', ms),
   setCoverTaskbar: (on) => ipcRenderer.invoke('set-cover-taskbar', on),

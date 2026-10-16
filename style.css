@@ -134,6 +134,21 @@ html, body {
   color: var(--txt);
 }
 
+/* Opens the app menu (also on right click): discreet until the top bar is
+   hovered or the button focused. Must not drag the window. */
+.menuBtn {
+  flex: 0 0 auto; align-self: center;
+  width: 1.8rem; height: 2.2rem;
+  display: grid; place-items: center;
+  background: transparent; border: none; border-radius: 0.3rem;
+  color: var(--faint); font-size: 1.5rem; font-family: inherit; line-height: 1;
+  cursor: pointer; opacity: 0;
+  -webkit-app-region: no-drag;
+  transition: opacity .15s, background .15s, color .15s;
+}
+.topBar:hover .menuBtn, .menuBtn:focus-visible { opacity: 1; }
+.menuBtn:hover { background: var(--hover); color: var(--txt); }
+
 .iBtn {
   width: 2.1rem; height: 1.9rem;
   display: grid; place-items: center;

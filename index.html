@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <!-- Nothing external and no inline script: text from an API cannot run. -->
@@ -9,6 +9,8 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- Texts carry their i18n key (data-i18n, data-i18n-title, data-i18n-placeholder);
+       the English text here is replaced at startup in the interface language. -->
   <div class="app">
 
     <!-- ================= markets column ================= -->
@@ -21,13 +23,14 @@
             <span class="dateFull" id="dateFull">--</span>
           </div>
         </div>
+        <button class="menuBtn" id="menuBtn" data-i18n-title="menu.button" title="Menu (or right-click)">&#8942;</button>
         <span class="clockTime" id="clockTime">--:--:--</span>
       </header>
       <div class="mScroll" id="mScroll"></div>
-      <section class="weather" id="weather" role="button" tabindex="0" title="Ouvrir la carte météo">
+      <section class="weather" id="weather" role="button" tabindex="0" data-i18n-title="weather.openMap" title="Open the weather map">
         <div class="wHead">
-          <span class="wPlace">Météo · <span id="wSite">--</span></span>
-          <span class="wOpen">Carte &#8599;</span>
+          <span class="wPlace"><span data-i18n="weather.title">Weather</span> · <span id="wSite">--</span></span>
+          <span class="wOpen"><span data-i18n="weather.map">Map</span> &#8599;</span>
         </div>
         <div class="wMain">
           <img class="wIcon" id="wIcon" alt="" hidden />
@@ -40,10 +43,10 @@
           </div>
         </div>
         <div class="wStats">
-          <div class="wStat"><span class="wLbl">Min / max</span><span class="wVal" id="wMinMax">--</span></div>
-          <div class="wStat"><span class="wLbl" id="wRainLbl">Pluie</span><span class="wVal" id="wRain">--</span></div>
-          <div class="wStat"><span class="wLbl" id="wWindLbl">Vent</span><span class="wVal" id="wWind">--</span></div>
-          <div class="wStat"><span class="wLbl">Orage</span><span class="wVal" id="wStorm">--</span></div>
+          <div class="wStat"><span class="wLbl" data-i18n="weather.minMax">Min / max</span><span class="wVal" id="wMinMax">--</span></div>
+          <div class="wStat"><span class="wLbl" id="wRainLbl" data-i18n="weather.rain">Rain</span><span class="wVal" id="wRain">--</span></div>
+          <div class="wStat"><span class="wLbl" id="wWindLbl" data-i18n="weather.wind">Wind</span><span class="wVal" id="wWind">--</span></div>
+          <div class="wStat"><span class="wLbl" data-i18n="weather.storm">Storm</span><span class="wVal" id="wStorm">--</span></div>
         </div>
       </section>
     </section>
@@ -51,19 +54,19 @@
     <!-- ================= system column ================= -->
     <section class="sys">
 
-      <div class="card grow">
+      <div class="card cpu grow">
         <div class="cHead"><span>CPU</span><span class="cVal" id="cpuAvg">--</span></div>
         <div class="cores" id="cores"></div>
         <div class="cFoot"><span id="cpuModel">--</span><span id="cpuCount">--</span></div>
       </div>
 
-      <div class="card">
+      <div class="card ram">
         <div class="cHead"><span>RAM</span><span class="cVal" id="ramPct">--</span></div>
         <div class="bar"><div class="barFill" id="ramBar"></div></div>
         <div class="cFoot"><span id="ramUsed">--</span><span id="ramFree">--</span></div>
       </div>
 
-      <div class="card" id="gpuCard">
+      <div class="card gpu" id="gpuCard">
         <div class="cHead"><span>GPU</span><span class="cVal" id="gpuUtil">--</span></div>
         <div class="bar"><div class="barFill" id="gpuBar"></div></div>
         <div class="miniRow"><span class="miniLbl">vram</span><div class="bar sm"><div class="barFill" id="vramBar"></div></div><span class="miniVal" id="vramVal">--</span></div>
@@ -71,7 +74,7 @@
       </div>
 
       <div class="card net grow">
-        <div class="cHead"><span>RÉSEAU</span><button class="purge" id="purgeBtn" title="Purger les cumuls">purger</button></div>
+        <div class="cHead"><span data-i18n="sys.network">NETWORK</span><button class="purge" id="purgeBtn" data-i18n="sys.reset" data-i18n-title="sys.resetTitle" title="Reset the totals">reset</button></div>
         <div class="netLive">
           <div class="netCol">
             <div class="netArrow down">&#9660;</div>
@@ -103,20 +106,20 @@
       </div>
       <div class="chartArea" id="chartArea"></div>
       <div class="ranges" id="ranges">
-        <button class="chip" data-range="1h">1 h</button>
-        <button class="chip" data-range="3h">3 h</button>
-        <button class="chip" data-range="6h">6 h</button>
-        <button class="chip" data-range="12h">12 h</button>
-        <button class="chip" data-range="24h">24 h</button>
-        <button class="chip" data-range="3d">3 j</button>
-        <button class="chip active" data-range="1w">1 sem</button>
-        <button class="chip" data-range="30d">30 j</button>
-        <button class="chip" data-range="60d">60 j</button>
-        <button class="chip" data-range="90d">90 j</button>
-        <button class="chip" data-range="6m">6 m</button>
-        <button class="chip" data-range="1y">1 an</button>
-        <button class="chip" data-range="3y">3 ans</button>
-        <button class="chip" data-range="5y">5 ans</button>
+        <button class="chip" data-range="1h" data-i18n="range.1h">1 h</button>
+        <button class="chip" data-range="3h" data-i18n="range.3h">3 h</button>
+        <button class="chip" data-range="6h" data-i18n="range.6h">6 h</button>
+        <button class="chip" data-range="12h" data-i18n="range.12h">12 h</button>
+        <button class="chip" data-range="24h" data-i18n="range.24h">24 h</button>
+        <button class="chip" data-range="3d" data-i18n="range.3d">3 d</button>
+        <button class="chip active" data-range="1w" data-i18n="range.1w">1 wk</button>
+        <button class="chip" data-range="30d" data-i18n="range.30d">30 d</button>
+        <button class="chip" data-range="60d" data-i18n="range.60d">60 d</button>
+        <button class="chip" data-range="90d" data-i18n="range.90d">90 d</button>
+        <button class="chip" data-range="6m" data-i18n="range.6m">6 mo</button>
+        <button class="chip" data-range="1y" data-i18n="range.1y">1 yr</button>
+        <button class="chip" data-range="3y" data-i18n="range.3y">3 yr</button>
+        <button class="chip" data-range="5y" data-i18n="range.5y">5 yr</button>
       </div>
     </div>
   </div>
@@ -125,13 +128,13 @@
   <div class="ov" id="addOv" hidden>
     <div class="ovBox">
       <div class="ovHead">
-        <div class="ovTitle">Ajouter une ligne</div>
+        <div class="ovTitle" data-i18n="add.title">Add a row</div>
         <button class="iBtn" data-close>&#10005;</button>
       </div>
       <div class="tabs" id="addTabs">
-        <button class="chip active" data-tab="metal">Métal</button>
-        <button class="chip" data-tab="fx">Devise</button>
-        <button class="chip" data-tab="crypto">Crypto</button>
+        <button class="chip active" data-tab="metal" data-i18n="add.metal">Metal</button>
+        <button class="chip" data-tab="fx" data-i18n="add.fx">Currency</button>
+        <button class="chip" data-tab="crypto" data-i18n="add.crypto">Crypto</button>
       </div>
 
       <div class="tabPane" data-pane="metal">
@@ -144,7 +147,7 @@
           <span class="fxSep">/</span>
           <select class="input" id="fxTo"></select>
         </div>
-        <button class="primary" id="fxAdd">Ajouter la paire</button>
+        <button class="primary" id="fxAdd" data-i18n="add.pair">Add the pair</button>
       </div>
 
       <div class="tabPane" data-pane="crypto" hidden>
@@ -158,24 +161,32 @@
   <div class="ov" id="setOv" hidden>
     <div class="ovBox">
       <div class="ovHead">
-        <div class="ovTitle">Réglages</div>
+        <div class="ovTitle" data-i18n="settings.title">Settings</div>
         <button class="iBtn" data-close>&#10005;</button>
       </div>
-      <div class="fLabel">Thème</div>
+      <div class="fLabel" data-i18n="settings.theme">Theme</div>
       <div class="chips" id="themes">
-        <button class="chip" data-theme="dark">Sombre</button>
-        <button class="chip" data-theme="light">Clair</button>
-        <button class="chip" data-theme="red">Rouge</button>
-        <button class="chip" data-theme="forest">Vert forêt</button>
-        <button class="chip" data-theme="green">Vert</button>
-        <button class="chip" data-theme="yellow">Jaune</button>
-        <button class="chip" data-theme="purple">Violet</button>
+        <button class="chip" data-theme="dark" data-i18n="theme.dark">Dark</button>
+        <button class="chip" data-theme="light" data-i18n="theme.light">Light</button>
+        <button class="chip" data-theme="red" data-i18n="theme.red">Red</button>
+        <button class="chip" data-theme="forest" data-i18n="theme.forest">Forest green</button>
+        <button class="chip" data-theme="green" data-i18n="theme.green">Green</button>
+        <button class="chip" data-theme="yellow" data-i18n="theme.yellow">Yellow</button>
+        <button class="chip" data-theme="purple" data-i18n="theme.purple">Purple</button>
       </div>
 
-      <div class="fLabel">Plein écran sur…</div>
+      <!-- Language names stay in their own language. -->
+      <div class="fLabel" data-i18n="settings.language">Language</div>
+      <div class="chips" id="languages">
+        <button class="chip" data-lang="auto" data-i18n="settings.languageAuto">Automatic</button>
+        <button class="chip" data-lang="en" lang="en">English</button>
+        <button class="chip" data-lang="fr" lang="fr">Français</button>
+      </div>
+
+      <div class="fLabel" data-i18n="settings.screen">Full screen on…</div>
       <div class="dispList" id="dispList"></div>
 
-      <div class="fLabel">Résolution fenêtrée</div>
+      <div class="fLabel" data-i18n="settings.windowSize">Windowed size</div>
       <div class="chips" id="resList">
         <button class="chip" data-w="960" data-h="640">960 &times; 640</button>
         <button class="chip" data-w="800" data-h="600">800 &times; 600</button>
@@ -184,7 +195,7 @@
         <button class="chip" data-w="640" data-h="480">640 &times; 480</button>
       </div>
 
-      <div class="fLabel">Taille de l'affichage</div>
+      <div class="fLabel" data-i18n="settings.zoom">Display size</div>
       <div class="chips" id="zooms">
         <button class="chip" data-z="1">100 %</button>
         <button class="chip" data-z="1.15">115 %</button>
@@ -193,24 +204,24 @@
         <button class="chip" data-z="1.75">175 %</button>
       </div>
 
-      <div class="fLabel">Mode nuit · assombrir de</div>
+      <div class="fLabel" data-i18n="settings.nightDim">Night mode · dim by</div>
       <div class="chips" id="nightDims">
         <button class="chip" data-dim="0.3">30 %</button>
         <button class="chip" data-dim="0.5">50 %</button>
         <button class="chip" data-dim="0.7">70 %</button>
       </div>
       <label class="switchRow nightRow">
-        <span>Assombrir du coucher au lever du soleil</span>
+        <span data-i18n="settings.nightToggle">Dim from sunset to sunrise</span>
         <input type="checkbox" id="nightTgl" />
         <span class="switch"></span>
       </label>
       <p class="hint" id="nightHint"></p>
 
-      <div class="fLabel">Ville météo · <span id="siteNow">--</span></div>
-      <input class="input" id="siteSearch" placeholder="Rechercher une ville…" autocomplete="off" />
+      <div class="fLabel"><span data-i18n="settings.city">Weather city</span> · <span id="siteNow">--</span></div>
+      <input class="input" id="siteSearch" data-i18n-placeholder="settings.citySearch" placeholder="Search for a city…" autocomplete="off" />
       <ul class="results" id="siteResults"></ul>
 
-      <div class="fLabel">Rafraîchissement des marchés</div>
+      <div class="fLabel" data-i18n="settings.refresh">Market refresh</div>
       <div class="chips" id="intervals">
         <button class="chip" data-ms="10000">10 s</button>
         <button class="chip" data-ms="20000">20 s</button>
@@ -219,22 +230,23 @@
         <button class="chip" data-ms="300000">5 min</button>
       </div>
       <label class="switchRow">
-        <span>Recouvrir la barre des tâches</span>
+        <span data-i18n="settings.cover">Cover the taskbar</span>
         <input type="checkbox" id="coverTgl" />
         <span class="switch"></span>
       </label>
       <label class="switchRow">
-        <span>Démarrer à l'ouverture de session</span>
+        <span data-i18n="settings.autostart">Start at login</span>
         <input type="checkbox" id="autoTgl" />
         <span class="switch"></span>
       </label>
-      <p class="hint">Le système (CPU, RAM, GPU, réseau) se met à jour chaque seconde, indépendamment de ce réglage.</p>
+      <p class="hint" data-i18n="settings.sysHint">System metrics (CPU, RAM, GPU, network) update every second, whatever this setting.</p>
     </div>
   </div>
 
   <!-- Night mode veil: below the panels, which stay readable. -->
   <div class="nightVeil" id="nightVeil"></div>
 
+  <script src="i18n.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>
