@@ -18,7 +18,8 @@
 Klakboard is a frameless desktop app that lives in the notification area and
 covers the secondary screen of your choice, above the taskbar. It was designed
 for a 3.6-inch 960 × 640 panel (about 325 PPI) and adapts to bar and portrait
-screens; resolution and zoom are adjustable.
+screens, and to ordinary monitors with more curves and forecasts; resolution
+and zoom are adjustable.
 
 > **Status** — Windows 10/11, macOS 12+ and Linux (x64); interface in English
 > and French. The Windows version is the one used daily; macOS and Linux are
@@ -47,7 +48,16 @@ temperature, feels-like, min/max, rain, wind and gusts, thunderstorm risk
 - RAM used / total / available
 - GPU: load, memory, fan and temperature where available (NVIDIA everywhere,
   AMD and Intel on Windows, AMD on Linux, Apple silicon and AMD on macOS)
-- Network: live rates, 90-second history, resettable totals
+- Network: live rates, 90-second history, totals (reset in two clicks)
+
+A click on a system card opens its **history** over 1 minute, 10 minutes or
+1 hour, with values under the pointer: CPU total and one curve per core, RAM,
+GPU load, memory and temperature, network rates with average and peak.
+
+<p align="center">
+  <img src="docs/screenshots/detail-cpu.png" width="360" alt="CPU history: total load and one curve per core, with the values at the pointer">
+  <img src="docs/screenshots/detail-net-fr.png" width="360" alt="Network history in French: download and upload rates, average and peak">
+</p>
 
 **Comfort** — English and French (following the system, or picked in the
 settings), 7 muted themes, zoom from 100 to 175 %, night mode (dims the screen
@@ -70,10 +80,16 @@ second screen. The layout follows the shape of the screen:
 
 - **landscape** panels close to 3:2 or 4:3 (960 × 640, 1024 × 600, 800 × 480…);
 - **bar** screens, 2.4:1 and wider (1920 × 480, 1920 × 440, 2560 × 720, 1280 × 400…);
-- **portrait** screens, 4:5 and narrower (480 × 800, 600 × 1024, 480 × 1920…).
+- **portrait** screens, 4:5 and narrower (480 × 800, 600 × 1024, 480 × 1920…);
+- **large** screens, from about 1500 × 850: the system cards show their history
+  curves, and the weather card the temperature over the next 24 hours and the
+  next 12 hours one by one.
 
 <p align="center">
   <img src="docs/screenshots/bar-1920x480.png" width="720" alt="Bar layout on a 1920 × 480 screen: badges, weather and system side by side">
+</p>
+<p align="center">
+  <img src="docs/screenshots/large-1920x1080.png" width="720" alt="Large layout on a 1920 × 1080 monitor: history curves in the system cards, 24-hour temperature and hourly forecast">
 </p>
 <p align="center">
   <img src="docs/screenshots/portrait-600x1024.png" width="240" alt="Portrait layout on a 600 × 1024 screen">
@@ -205,12 +221,14 @@ display.js    picks the screen to cover
 markets.js    market sources and chart normalisation
 weather.js    Open-Meteo weather and icon choice
 system.js     CPU / RAM / GPU / network metrics, sampled every second
+history.js    metrics history: 10 min at 1 s, 1 h at 10 s (main process)
 platform/     metric sources per system (win32, darwin, linux, nvidia)
 autostart.js  start at login on Linux (XDG autostart entry)
 updates.js    finds and downloads releases
 updater.js    swaps the app archive after exit (runs outside the app)
 preload.js    IPC bridge (context isolation on)
-renderer.js   rendering: badges, charts, settings
+renderer.js   rendering: badges, charts, history views, settings
+charts.js     time-series charts on canvas
 i18n.js       interface strings (English, French), shared by main and page
 style.css     themes, type scale, landscape / bar / portrait layouts
 fonts/        Selawik (Segoe UI metrics) for systems without Segoe UI
@@ -226,9 +244,8 @@ truncated file; an unreadable file is set aside, never overwritten.
 
 1. ~~Public release~~ (1.6.0), ~~English and French, menu inside the window,
    bar and portrait layouts~~ (1.7.0), ~~macOS and Linux, GPU load for AMD and
-   Intel~~ (1.8.0).
-2. Larger screens: more details, and detailed CPU (per core), GPU and network
-   charts on click.
+   Intel~~ (1.8.0), ~~history views and large screens~~ (1.9.0).
+2. Next ideas are welcome in the issues.
 
 The full review behind this plan, in French: [docs/AUDIT-2026-10-16.md](docs/AUDIT-2026-10-16.md).
 
