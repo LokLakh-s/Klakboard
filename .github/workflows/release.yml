@@ -1,10 +1,11 @@
 # Publishes a release when "version" in package.json has no klakboard-v<version>
-# release yet: bump the version and push to main. Builds run on GitHub-hosted
-# runners, natively (no Wine).
+# release yet: bump the version and push to main. Each platform builds on its
+# own GitHub-hosted runner, natively.
 #
-# Release files read by the in-app updater (names must not change):
+# Release files read by the Windows in-app updater (names must not change):
 #   Klakboard.Setup.<version>.exe   full installer (first install, Electron upgrade)
 #   app-electron<major>.asar        app archive, only runs on that Electron major
+# macOS and Linux copies only open the release page.
 name: Release
 
 on:
@@ -82,8 +83,49 @@ jobs:
           path: out/*
           if-no-files-found: error
 
+  macos:
+    needs: version
+    if: needs.version.outputs.publish == 'true'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      # arm64 and x64 disk images, ad-hoc signed (see build.mac in package.json).
+      - run: npx electron-builder --mac --publish never
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  linux:
+    needs: version
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npx electron-builder --linux --publish never
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+          if-no-files-found: error
+
   publish:
-    needs: [version, windows]
+    needs: [version, windows, macos, linux]
     runs-on: ubuntu-24.04
     permissions:
       contents: write       # tag + release
@@ -121,8 +163,14 @@ jobs:
             echo "## Install"
             echo
             echo "- **Windows**: run \`Klakboard.Setup.$VERSION.exe\`. The installer is not code-signed:"
-            echo "  SmartScreen asks for confirmation (*More info* → *Run anyway*)."
-            echo "- **Already installed**: Klakboard offers the update itself (tray icon → right click)."
+            echo "  SmartScreen asks for confirmation (*More info* → *Run anyway*). Installed copies"
+            echo "  offer the update themselves (tray icon → right click)."
+            echo "- **macOS** (12 or later): \`Klakboard-$VERSION-arm64.dmg\` for Apple silicon,"
+            echo "  \`Klakboard-$VERSION-x64.dmg\` for Intel Macs. Not notarized: on first launch,"
+            echo "  *System Settings* → *Privacy & Security* → *Open Anyway*."
+            echo "- **Linux** (x64): \`Klakboard-$VERSION-x86_64.AppImage\` (make it executable),"
+            echo "  or \`Klakboard-$VERSION-amd64.deb\`. GNOME needs the AppIndicator extension for"
+            echo "  the tray icon; the menu also opens with a right click in the dashboard."
             echo
             echo "Files are listed in \`SHA256SUMS\` and carry a build provenance attestation:"
             echo "\`gh attestation verify <file> -R $GITHUB_REPOSITORY\`."
