@@ -20,8 +20,9 @@ covers the secondary screen of your choice, above the taskbar. It was designed
 for a 3.6-inch 960 × 640 panel (about 325 PPI) and adapts to bar and portrait
 screens; resolution and zoom are adjustable.
 
-> **Status** — Windows 10/11, interface in English and French. macOS and Linux
-> are next (see [Roadmap](#roadmap)).
+> **Status** — Windows 10/11, macOS 12+ and Linux (x64); interface in English
+> and French. The Windows version is the one used daily; macOS and Linux are
+> new in 1.8.0, feedback welcome in the issues.
 
 ## Features
 
@@ -44,12 +45,13 @@ temperature, feels-like, min/max, rain, wind and gusts, thunderstorm risk
 
 - Load per logical core (green → amber → red bars)
 - RAM used / total / available
-- NVIDIA GPU: load, VRAM, fan, temperature
+- GPU: load, memory, fan and temperature where available (NVIDIA everywhere,
+  AMD and Intel on Windows, AMD on Linux, Apple silicon and AMD on macOS)
 - Network: live rates, 90-second history, resettable totals
 
 **Comfort** — English and French (following the system, or picked in the
 settings), 7 muted themes, zoom from 100 to 175 %, night mode (dims the screen
-from sunset to sunrise at the weather city), start with Windows.
+from sunset to sunrise at the weather city), start at login.
 
 **Screens** — the screen chosen in the settings is remembered. If it is missing
 (not detected yet at login, unplugged), the window waits hidden instead of
@@ -87,12 +89,22 @@ USB serial link are not displays for the system: Klakboard cannot use them.
 
 ## Install
 
-Download `Klakboard.Setup.<version>.exe` from the
-[latest release](https://github.com/LokLakh-s/Klakboard/releases/latest) and run it.
+From the [latest release](https://github.com/LokLakh-s/Klakboard/releases/latest):
 
-The installer is not code-signed, so SmartScreen asks for confirmation on the
-first run: *More info* → *Run anyway*. To check a download, compare it with
-`SHA256SUMS` in the release, or verify its build provenance with the GitHub CLI:
+| System | File | First launch |
+|---|---|---|
+| Windows 10/11 | `Klakboard.Setup.<version>.exe` | Not code-signed: SmartScreen asks for confirmation (*More info* → *Run anyway*) |
+| macOS 12+, Apple silicon | `Klakboard-<version>-arm64.dmg` | Not notarized: *System Settings* → *Privacy & Security* → *Open Anyway* |
+| macOS 12+, Intel | `Klakboard-<version>-x64.dmg` | Same as above |
+| Linux x64 | `Klakboard-<version>-x86_64.AppImage` (make it executable) or `Klakboard-<version>-amd64.deb` | — |
+
+On Linux, Klakboard runs under XWayland: native Wayland does not let an app
+place its window on a given screen nor keep it on top. GNOME only shows the
+tray icon with the AppIndicator extension; without it, the menu still opens
+with a right click in the dashboard.
+
+To check a download, compare it with `SHA256SUMS` in the release, or verify its
+build provenance with the GitHub CLI:
 
 ```bash
 gh attestation verify Klakboard.Setup.<version>.exe -R LokLakh-s/Klakboard
@@ -107,7 +119,7 @@ a right click anywhere in the dashboard (long press on a touch screen), or the
 
 | | |
 |---|---|
-| `Ctrl+Shift+Q` | Quit — **emergency exit**, as the window has no title bar and no taskbar button |
+| `Ctrl+Shift+Q` (`Ctrl+Option+Q` on macOS) | Quit — **emergency exit**, as the window has no title bar and no taskbar button |
 | ✕ on a badge (hover) | Remove the row |
 | `Esc` | Close the open panel |
 
@@ -116,6 +128,8 @@ a right click anywhere in the dashboard (long press on a touch screen), or the
 Klakboard checks this repository's releases every 30 minutes and shows a
 notification; right-click the icon → *Install the update*.
 
+On **Windows** it installs the update itself:
+
 - **Same Electron version**: only the app archive (`app-electron<major>.asar`)
   is downloaded; a small helper swaps it once Klakboard has closed, then
   restarts it. Log: `%TEMP%\klakboard-update.log`.
@@ -123,6 +137,9 @@ notification; right-click the icon → *Install the update*.
   Klakboard downloads the full installer and runs it.
 
 Every download is checked against the SHA-256 digest published by GitHub.
+
+On **macOS and Linux** it opens the release page: a signed app bundle, a
+read-only AppImage or a system package cannot be patched in place.
 
 ## Data sources
 
@@ -144,7 +161,8 @@ All free, **no API key**. Requests go out from the main process, with a
 
 **Privacy** — no account, no telemetry. The only requests are to the sources
 above and to the GitHub API for updates. Settings stay on your computer, in
-`%APPDATA%\Klakboard\dashboard.json`.
+`dashboard.json`: `%APPDATA%\Klakboard` on Windows, `~/Library/Application
+Support/Klakboard` on macOS, `~/.config/Klakboard` on Linux.
 
 ## Build from source
 
@@ -154,38 +172,48 @@ Requires Node.js 22 or later.
 npm ci
 npm test         # unit tests under plain Node, no Electron needed
 npm start        # run without packaging
-npm run dist     # -> dist/Klakboard Setup <version>.exe (Windows)
+npm run dist     # packages for the current system, in dist/
 ```
+
+**Continuous integration** — every push and pull request runs the tests on
+Windows, macOS and Linux, including a smoke test that reads the real system
+metrics of each one; pull requests also build the packages of the three systems.
 
 **Releasing** — bump `version` in `package.json` and push to `main`. The
 [Release workflow](.github/workflows/release.yml) runs the tests, builds the
-installer and the app archive on GitHub-hosted runners, then creates the
+Windows, macOS and Linux packages on GitHub-hosted runners, then creates the
 `klakboard-v<version>` tag and release with notes, checksums and a build
 provenance attestation.
 
 ## Architecture
 
 No npm dependency at runtime and no native module. System metrics come from
-built-in tools:
+built-in tools, through one long-running process wherever spawning one each
+second would cost too much (PowerShell takes ~0.8 s to start):
 
-| Metric | Method |
-|---|---|
-| CPU, RAM | Node `os` module |
-| GPU | `nvidia-smi`, every 2 s (retried 30 s after a failure) |
-| Network | **one** long-running PowerShell process (spawning one costs ~0.8 s, too slow every second) |
+| Metric | Windows | macOS | Linux |
+|---|---|---|---|
+| CPU | Node `os` | Node `os` | Node `os` |
+| RAM | Node `os` | `vm_stat` (`os.freemem()` only counts free pages) | Node `os` |
+| GPU, NVIDIA | `nvidia-smi -lms`, one process | — | `nvidia-smi -lms`, one process |
+| GPU, others | performance counters (CIM), one PowerShell process | `ioreg` (IOAccelerator) | amdgpu sysfs |
+| Network | `Get-NetAdapterStatistics`, one PowerShell process | `netstat -ibn` | `/proc/net/dev` |
 
 ```
 main.js       main process: window, screens, tray, IPC, settings, updates
 display.js    picks the screen to cover
 markets.js    market sources and chart normalisation
 weather.js    Open-Meteo weather and icon choice
-system.js     CPU / RAM / GPU / network metrics
+system.js     CPU / RAM / GPU / network metrics, sampled every second
+platform/     metric sources per system (win32, darwin, linux, nvidia)
+autostart.js  start at login on Linux (XDG autostart entry)
 updates.js    finds and downloads releases
 updater.js    swaps the app archive after exit (runs outside the app)
 preload.js    IPC bridge (context isolation on)
 renderer.js   rendering: badges, charts, settings
 i18n.js       interface strings (English, French), shared by main and page
 style.css     themes, type scale, landscape / bar / portrait layouts
+fonts/        Selawik (Segoe UI metrics) for systems without Segoe UI
 test/         node:test suites; main.js runs against a fake electron module
 ```
 
@@ -197,9 +225,9 @@ truncated file; an unreadable file is set aside, never overwritten.
 ## Roadmap
 
 1. ~~Public release~~ (1.6.0), ~~English and French, menu inside the window,
-   bar and portrait layouts~~ (1.7.0).
-2. macOS and Linux builds, GPU load for AMD and Intel.
-3. Larger screens: more details, and detailed CPU (per core), GPU and network
+   bar and portrait layouts~~ (1.7.0), ~~macOS and Linux, GPU load for AMD and
+   Intel~~ (1.8.0).
+2. Larger screens: more details, and detailed CPU (per core), GPU and network
    charts on click.
 
 The full review behind this plan, in French: [docs/AUDIT-2026-10-16.md](docs/AUDIT-2026-10-16.md).
@@ -207,3 +235,4 @@ The full review behind this plan, in French: [docs/AUDIT-2026-10-16.md](docs/AUD
 ## License
 
 [MIT](LICENSE). Weather icons: [Meteocons](https://github.com/basmilius/weather-icons) by Bas Milius (MIT).
+Font: [Selawik](https://github.com/microsoft/Selawik) by Microsoft (SIL Open Font License).
