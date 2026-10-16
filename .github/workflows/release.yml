@@ -1,109 +1,132 @@
-# Release Klakboard, executee par le runner auto-heberge de l'orga LokLakh-s.
+# Publishes a release when "version" in package.json has no klakboard-v<version>
+# release yet: bump the version and push to main. Builds run on GitHub-hosted
+# runners, natively (no Wine).
 #
-# A chaque push sur main touchant Windows/Klakboard, si "version" dans package.json
-# n'a pas encore de release klakboard-v<version>, lance les tests puis construit
-# dans un conteneur electron-builder (Wine inclus, l'hote n'a besoin que de Docker) :
-#   - l'installeur NSIS (premiere installation, changement de version d'Electron)
-#   - app-electron<majeure>.asar (mise a jour depuis l'appli, sur ce moteur seulement)
-# puis publie la release, taguee sur le commit construit.
-# Un push force (historique reecrit) ne declenche pas ce workflow : le lancer a la main.
-name: Klakboard release
+# Release files read by the in-app updater (names must not change):
+#   Klakboard.Setup.<version>.exe   full installer (first install, Electron upgrade)
+#   app-electron<major>.asar        app archive, only runs on that Electron major
+name: Release
 
 on:
   push:
     branches: [main]
-    paths: ['Windows/Klakboard/**']
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
-concurrency: klakboard-release
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  release:
-    runs-on: [self-hosted]
-    defaults:
-      run:
-        working-directory: Windows/Klakboard
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      electron: ${{ steps.v.outputs.electron }}
+      publish: ${{ steps.v.outputs.publish }}
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Version a publier
-        id: ver
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const { version } = require(`${process.env.GITHUB_WORKSPACE}/Windows/Klakboard/package.json`);
-            const tag = `klakboard-v${version}`;
-            let exists = true;
-            try {
-              await github.rest.repos.getReleaseByTag({ ...context.repo, tag });
-            } catch (e) {
-              if (e.status !== 404) throw e;
-              exists = false;
-            }
-            core.setOutput('version', version);
-            core.setOutput('tag', tag);
-            core.setOutput('exists', String(exists));
-            core.notice(exists ? `${tag} existe deja : rien a publier (bumper "version").` : `Publication de ${tag}.`);
-
-      # Conteneur lance avec l'uid du runner : sinon node_modules/ et dist/ appartiennent
-      # a root et le checkout suivant ne peut plus nettoyer le workspace. HOME pointe
-      # dans le cache de l'hote : Wine exige un HOME possede par l'utilisateur, et le
-      # prefixe Wine y est conserve d'un build a l'autre.
-      - name: Tests et build (electron-builder + Wine, en conteneur)
-        if: steps.ver.outputs.exists == 'false'
-        run: |
-          CACHE="$HOME/.cache/klakboard-build"
-          mkdir -p "$CACHE/home"
-          docker run --rm --user "$(id -u):$(id -g)" \
-            -e HOME=/cache/home -e npm_config_cache=/cache/npm \
-            -e ELECTRON_CACHE=/cache/electron -e ELECTRON_BUILDER_CACHE=/cache/electron-builder \
-            -v "$PWD":/project -w /project -v "$CACHE":/cache \
-            electronuserland/builder:wine \
-            bash -c "node --version && npm ci --no-audit --no-fund && npm test && npx electron-builder --win --publish never"
-
-      - name: Publier la release
-        if: steps.ver.outputs.exists == 'false'
-        uses: actions/github-script@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: v
         env:
-          VERSION: ${{ steps.ver.outputs.version }}
-          TAG: ${{ steps.ver.outputs.tag }}
-        with:
-          script: |
-            const fs = require('fs');
-            const path = require('path');
-            const { VERSION, TAG } = process.env;
-            const app = path.join(process.env.GITHUB_WORKSPACE, 'Windows/Klakboard');
-            const dist = path.join(app, 'dist');
-            // L'archive ne tourne que sur le moteur qui l'a construite : son nom
-            // porte la version majeure d'Electron, et l'appli n'installe que la sienne.
-            const electronMajor = require(path.join(app, 'node_modules/electron/package.json')).version.split('.')[0];
-            const assets = [
-              [`Klakboard Setup ${VERSION}.exe`, `Klakboard.Setup.${VERSION}.exe`],
-              ['win-unpacked/resources/app.asar', `app-electron${electronMajor}.asar`],
-            ];
-            // Les versions <= 1.2.5 ne cherchent que "app.asar" (et tournent sur Electron 33).
-            if (electronMajor === '33') assets.push(['win-unpacked/resources/app.asar', 'app.asar']);
-            for (const [file] of assets) {
-              if (!fs.existsSync(path.join(dist, file))) core.setFailed(`Artefact manquant : ${file}`);
-            }
-            if (process.exitCode) return;
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          electron=$(node -p "require('./package-lock.json').packages['node_modules/electron'].version.split('.')[0]")
+          tag="klakboard-v$version"
+          # Only a 404 means "not released yet"; any other error stops the run.
+          if out=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --jq .id 2>&1); then
+            publish=false
+            echo "::notice::$tag already exists: bump \"version\" in package.json to publish."
+          elif grep -q 'HTTP 404' <<<"$out"; then
+            publish=true
+            echo "::notice::Publishing $tag (Electron $electron)."
+          else
+            echo "$out"
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "electron=$electron"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
 
-            const { data: rel } = await github.rest.repos.createRelease({
-              ...context.repo,
-              tag_name: TAG,
-              target_commitish: context.sha,
-              name: `Klakboard ${VERSION}`,
-              body: `Klakboard ${VERSION} (Electron ${electronMajor}). Mise a jour depuis l'appli : clic droit sur l'icone de la zone de notifications.`,
-            });
-            for (const [file, name] of assets) {
-              await github.rest.repos.uploadReleaseAsset({
-                ...context.repo,
-                release_id: rel.id,
-                name,
-                data: fs.readFileSync(path.join(dist, file)),
-              });
-            }
-            core.notice(`${TAG} publiee : ${rel.html_url}`);
+  windows:
+    needs: version
+    if: needs.version.outputs.publish == 'true'
+    runs-on: windows-2025
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      ELECTRON: ${{ needs.version.outputs.electron }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npx electron-builder --win --publish never
+      - name: Collect release files
+        shell: bash
+        run: |
+          mkdir out
+          cp "dist/Klakboard Setup $VERSION.exe" "out/Klakboard.Setup.$VERSION.exe"
+          cp dist/win-unpacked/resources/app.asar "out/app-electron$ELECTRON.asar"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows
+          path: out/*
+          if-no-files-found: error
+
+  publish:
+    needs: [version, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write       # tag + release
+      id-token: write       # build provenance
+      attestations: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+      ELECTRON: ${{ needs.version.outputs.electron }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0    # previous tag and commit log for the notes
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: out
+          merge-multiple: true
+      - name: Checksums
+        working-directory: out
+        run: sha256sum -- * > SHA256SUMS
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: out/*
+      - name: Release notes
+        run: |
+          prev=$(git describe --tags --abbrev=0 --match 'klakboard-v*' 2>/dev/null || true)
+          {
+            echo "Klakboard $VERSION (Electron $ELECTRON)."
+            echo
+            echo "## Changes"
+            echo
+            git log --no-merges --format='- %s' ${prev:+"$prev..HEAD"}
+            echo
+            echo "## Install"
+            echo
+            echo "- **Windows**: run \`Klakboard.Setup.$VERSION.exe\`. The installer is not code-signed:"
+            echo "  SmartScreen asks for confirmation (*More info* → *Run anyway*)."
+            echo "- **Already installed**: Klakboard offers the update itself (tray icon → right click)."
+            echo
+            echo "Files are listed in \`SHA256SUMS\` and carry a build provenance attestation:"
+            echo "\`gh attestation verify <file> -R $GITHUB_REPOSITORY\`."
+          } > notes.md
+          cat notes.md
+      - name: Create tag and release
+        run: gh release create "$TAG" out/* --target "$GITHUB_SHA" --title "Klakboard $VERSION" --notes-file notes.md
