@@ -1,10 +1,18 @@
 {
   "name": "klakboard",
   "version": "1.5.0",
-  "description": "Klakboard — tableau de bord marches (metaux, devises, cryptos) et monitoring systeme, pour petit ecran secondaire",
+  "description": "Dashboard for secondary displays: markets (metals, currencies, crypto), weather and system monitoring",
   "main": "main.js",
   "author": "Klakh",
   "license": "MIT",
+  "homepage": "https://github.com/LokLakh-s/Klakboard#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LokLakh-s/Klakboard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/LokLakh-s/Klakboard/issues"
+  },
   "scripts": {
     "start": "electron .",
     "test": "node --test test/main.test.js test/units.test.js",
@@ -52,9 +60,5 @@
       "runAfterFinish": true,
       "include": "build/installer.nsh"
     }
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/LokLakh-s/widgets.git"
   }
 }

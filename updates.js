@@ -11,7 +11,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 
-const REPO = 'LokLakh-s/widgets';
+const REPO = 'LokLakh-s/Klakboard';
 const TAG_PREFIX = 'klakboard-v';
 const asarName = (electronMajor) => `app-electron${electronMajor}.asar`;
 const SETUP_RE = /^Klakboard\.Setup\.\d+\.\d+\.\d+\.exe$/;
