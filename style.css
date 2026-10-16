@@ -197,7 +197,7 @@ html, body {
 
 .wStats { display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 0.8rem; }
 .wStat { display: flex; flex-direction: column; min-width: 0; }
-.wLbl { font-size: min(1.35rem, 4.1cqi); color: var(--faint); white-space: nowrap; }
+.wLbl { font-size: min(1.35rem, 4.1cqi); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wVal { font-size: min(1.7rem, 5.2cqi); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wVal.warn { color: var(--warn); }
 .wVal.alert { color: var(--down); }
@@ -214,6 +214,14 @@ html, body {
 }
 @container (max-height: 10rem) {
   .wHead { display: none; }
+}
+/* Narrow card (bar screens): smaller icon and temperature, stats on two rows. */
+@container (max-width: 24rem) {
+  .wIcon { width: 6rem; height: 6rem; margin: -0.8rem -0.4rem -0.8rem -0.7rem; }
+  .wTemp { font-size: 2.8rem; }
+  .wStats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 0.4rem; }
+  .wLbl { font-size: min(1.35rem, 7cqi); }
+  .wVal { font-size: min(1.7rem, 9.6cqi); }
 }
 
 .emptyHint { padding: 1.4rem 0.8rem; text-align: center; color: var(--faint); font-size: 1.15rem; }
@@ -411,6 +419,72 @@ html, body {
   transition: all .15s;
 }
 .purge:hover { border-color: var(--down); color: var(--down); }
+
+/* ================= screen shapes =================
+ * The layout above is for landscape screens close to 3:2 (960 x 640,
+ * 1024 x 600, 800 x 480). Bar screens (1920 x 480, 2560 x 720, 1280 x 400) and
+ * portrait screens get their own arrangement; zoom keeps the aspect ratio, so
+ * the mode does not change with it.
+ */
+
+/* Bar: badges | weather | system, side by side; the badges share the height. */
+@media (min-aspect-ratio: 12/5) {
+  .app {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.55fr) minmax(0, 1.3fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .markets { display: contents; }
+  .topBar { grid-column: 1; grid-row: 1; }
+  .mScroll { grid-column: 1; grid-row: 2; }
+  .badges { height: 100%; grid-auto-rows: minmax(5.4rem, 1fr); }
+  /* Tall badges: price and change stay together at the top, the sparkline
+     takes the rest of the height. */
+  .badge { grid-template-rows: auto auto minmax(0, 1fr); }
+  .bChg { align-self: start; }
+  .weather { grid-column: 2; grid-row: 1 / 3; margin: 0.4rem 0.4rem 0.4rem 0; }
+  .sys {
+    grid-column: 3; grid-row: 1 / 3;
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "cpu ram net" "cpu gpu net";
+    border-left: 1px solid var(--line);
+  }
+  .card.cpu { grid-area: cpu; }
+  .card.ram { grid-area: ram; justify-content: center; gap: 0.3rem; }
+  .card.gpu { grid-area: gpu; justify-content: center; gap: 0.3rem; }
+  .card.net { grid-area: net; }
+}
+
+/* Portrait: everything stacked, RAM and GPU side by side; CPU and network
+   take the remaining height. */
+@media (max-aspect-ratio: 4/5) {
+  .app { flex-direction: column; }
+  .markets { flex: 0 0 auto; border-right: none; border-bottom: 1px solid var(--line); }
+  .weather { flex: 0 0 auto; height: clamp(11rem, 22vh, 19rem); }
+  .sys {
+    flex: 1 1 auto; min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    /* The network card keeps its full content; the CPU bars shrink first. */
+    grid-template-rows: minmax(0, 1fr) auto minmax(min-content, 1fr);
+    grid-template-areas: "cpu cpu" "ram gpu" "net net";
+  }
+  .card.cpu { grid-area: cpu; }
+  .card.ram { grid-area: ram; }
+  .card.gpu { grid-area: gpu; }
+  .card.net { grid-area: net; }
+  .clockTime { font-size: min(2.7rem, 9vw); }
+  .dateDay, .dateFull { font-size: min(1.6rem, 5.4vw); }
+}
+
+/* Narrow cards (bar and portrait): footers and headers wrap instead of
+   cutting their text. */
+@media (min-aspect-ratio: 12/5), (max-aspect-ratio: 4/5) {
+  .cFoot { flex-wrap: wrap; column-gap: 0.6rem; row-gap: 0; }
+  .cHead { flex-wrap: wrap; }
+}
 
 /* ================= night mode ================= */
 

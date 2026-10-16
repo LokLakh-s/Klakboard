@@ -228,3 +228,20 @@ test('translation placeholders and fallback', () => {
   i18n.setLanguage('xx');
   assert.equal(i18n.lang, 'en');
 });
+
+test('screen picked without a saved choice: small panels and bar screens only', () => {
+  const { findTargetDisplay } = require('../display');
+  const d = (id, width, height) => ({ id, bounds: { x: 0, y: 0, width, height } });
+  const main = d(1, 2560, 1440);
+  const pick = (...others) => findTargetDisplay([main, ...others], 1, null)?.id ?? null;
+  assert.equal(pick(d(2, 1024, 600), d(3, 960, 640)), 3, '960 x 640 first');
+  assert.equal(pick(d(2, 1920, 480)), 2, 'bar screen');
+  assert.equal(pick(d(2, 2560, 720)), 2, 'wide bar screen');
+  assert.equal(pick(d(2, 480, 1920)), 2, 'vertical bar screen');
+  assert.equal(pick(d(2, 600, 1024)), 2, 'small portrait panel');
+  assert.equal(pick(d(2, 1920, 480), d(3, 800, 480)), 3, 'smallest first');
+  assert.equal(pick(d(2, 1920, 1080)), null, 'ordinary monitor');
+  assert.equal(pick(d(2, 1080, 1920)), null, 'rotated monitor');
+  assert.equal(pick(d(2, 1366, 768)), null, 'laptop panel');
+  assert.equal(findTargetDisplay([d(1, 960, 640)], 1, null), null, 'never the primary screen');
+});
