@@ -40,7 +40,10 @@ after three missed cycles, and the status dot turns red (details in its tooltip)
 
 **Weather** — current conditions and today's forecast for the city you pick:
 temperature, feels-like, min/max, rain, wind and gusts, thunderstorm risk
-(CAPE). A click opens the Windy map.
+(CAPE). Behind the icon and the temperature, a faded curve shows the next
+24 hours; a click on it opens them hour by hour (temperature and feels-like,
+rain chance and amount, wind and gusts, sunrise and sunset). The rest of the
+card opens the Windy map.
 
 **System** — refreshed every second, independently of the markets.
 
@@ -68,7 +71,10 @@ from sunset to sunrise at the weather city), start at login.
 covering your main screen, and comes back with it.
 
 <p align="center">
+  <img src="docs/screenshots/weather-detail.png" width="360" alt="Next 24 hours: temperature and feels-like, rain chance, wind and gusts, hour by hour">
   <img src="docs/screenshots/chart.png" width="360" alt="Full-screen gold chart over one week">
+</p>
+<p align="center">
   <img src="docs/screenshots/settings.png" width="360" alt="Settings: themes, target screen, resolution, zoom, night mode">
 </p>
 
