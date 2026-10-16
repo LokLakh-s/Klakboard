@@ -46,7 +46,11 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --no-audit --no-fund
+      # electron-builder skips signing in pull requests; the macOS signature is
+      # ad-hoc (no certificate, no secret), so it is checked here too.
       - run: npx electron-builder --publish never
+        env:
+          CSC_FOR_PULL_REQUEST: 'true'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: packages-${{ runner.os }}
