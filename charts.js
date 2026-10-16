@@ -34,10 +34,28 @@
     return m;
   }
 
+  const axisMin = (opts) => opts.min ?? 0;
+  const axisMax = (opts) => opts.max ?? niceMax(Math.max(maxOf(opts.series), opts.floor ?? 0));
+
+  /** Labels of the value axis (bottom, middle, top). */
+  function axisLabels(opts) {
+    const [min, max] = [axisMin(opts), axisMax(opts)];
+    return opts.fmtY ? [min, (min + max) / 2, max].map(opts.fmtY) : [];
+  }
+
+  let measureCtx = null;
+  /** Width of the widest label in `font`: one gutter for stacked charts keeps their time axes aligned. */
+  function labelWidth(font, labels) {
+    measureCtx ||= document.createElement('canvas').getContext('2d');
+    measureCtx.font = font;
+    return Math.max(0, ...labels.map((l) => measureCtx.measureText(l).width));
+  }
+
   /**
-   * Draws `opts.series` ([{ values, color, fill }]) against `opts.t` (ms).
+   * Draws `opts.series` ([{ values, color, fill, width, dash }]) against `opts.t` (ms).
    *   max      fixed maximum (100 for loads), or auto from the data (with `floor`)
    *   min      bottom of the axis (0 by default)
+   *   gutter   minimum width of the axis labels (px), shared by stacked charts
    *   fmtY     axis value label; no axis labels when absent
    *   fmtT     time label; no time axis when absent
    *   font     CSS font of the labels; colors: { grid, text }
@@ -51,12 +69,12 @@
     const { t, series, fmtY, fmtT, colors = {}, font = '12px sans-serif' } = opts;
     const fontPx = parseFloat(font) || 12;
     const n = t.length;
-    const min = opts.min ?? 0;
-    const max = opts.max ?? niceMax(Math.max(maxOf(series), opts.floor ?? 0));
+    const min = axisMin(opts);
+    const max = axisMax(opts);
     ctx.font = font;
     // Room for the widest axis label on the right, and for half a label above
     // the top line and below the bottom one.
-    const labelW = fmtY ? Math.max(...[min, (min + max) / 2, max].map((v) => ctx.measureText(fmtY(v)).width)) : 0;
+    const labelW = fmtY ? Math.max(opts.gutter ?? 0, ...axisLabels(opts).map((l) => ctx.measureText(l).width)) : 0;
     const pad = {
       l: 2,
       r: fmtY ? Math.ceil(labelW + fontPx * 0.5) : 2,
@@ -119,7 +137,9 @@
         ctx.strokeStyle = s.color;
         ctx.lineWidth = s.width ?? 1.5;
         ctx.lineJoin = 'round';
+        ctx.setLineDash(s.dash || []);
         ctx.stroke();
+        ctx.setLineDash([]);
       }
     }
 
@@ -145,5 +165,5 @@
     return Math.round(f * (geom.n - 1));
   }
 
-  root.charts = { draw, indexAt, niceMax };
+  root.charts = { draw, indexAt, niceMax, axisLabels, labelWidth };
 })(typeof self !== 'undefined' ? self : this);

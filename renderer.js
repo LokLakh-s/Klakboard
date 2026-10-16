@@ -572,10 +572,8 @@ $('ranges').addEventListener('click', (e) => {
 
 function close(ov) {
   ov.hidden = true;
-  if (ov.id === 'sysOv') {
-    detail = null;
-    $('sdTip').hidden = true;
-  }
+  $('sdTip').hidden = true;
+  if (ov.id === 'sysOv') detail = null;
 }
 
 document.querySelectorAll('[data-close]').forEach((b) =>
@@ -663,6 +661,7 @@ $('themes').addEventListener('click', async (e) => {
   config = await window.dash.setTheme(b.dataset.theme);
   syncSettings();
   drawNetSpark();
+  drawWeatherBg();
   if (!$('chartOv').hidden) loadChart();
 });
 
@@ -725,7 +724,7 @@ $('autoTgl').addEventListener('change', async (e) => {
 
 /* ---------------- night mode ---------------- */
 
-const hhmm = (ms) => fmtTime(ms, { hour: '2-digit', minute: '2-digit' });
+const hhmm = (ms) => fmtTime(ms, { hour: 'numeric', minute: '2-digit' });
 let lastNight = null;
 
 function renderNight({ on, dim, from, until, current }) {
@@ -1002,10 +1001,11 @@ function drawDetail(defs, data, pointer) {
   const colors = chartColors();
   const fmtT = (ms) => fmtTime(ms, detail.range === '1h' ? { hour: 'numeric', minute: '2-digit' } : undefined);
   const hover = detail.hover;
+  const gutter = charts.labelWidth(font, defs.flatMap((d) => charts.axisLabels({ ...d, fmtY: d.fmt })));
   defs.forEach((d, k) => {
     const c = detail.canvases[k];
     if (!c) return;
-    const geom = charts.draw(c.canvas, { t: data.t, series: d.series, max: d.max, floor: d.floor, fmtY: d.fmt, fmtT, font, colors, hover });
+    const geom = charts.draw(c.canvas, { t: data.t, series: d.series, max: d.max, floor: d.floor, fmtY: d.fmt, fmtT, font, colors, hover, gutter });
     if (k === 0) detail.geom = geom;
     c.now.textContent = d.series.map((s) => d.fmt(hover != null ? s.values[hover] : lastFinite(s.values))).join(' / ');
   });
@@ -1086,6 +1086,7 @@ function onHistoryTick() {
 
 LARGE_MQ.addEventListener('change', () => {
   if (LARGE_MQ.matches) { drawCardCharts(); drawWeatherChart(); }
+  drawWeatherBg();
 });
 
 /* ---------------- language ---------------- */
@@ -1116,6 +1117,9 @@ function applyLanguage({ lang, locale }) {
   if (!$('setOv').hidden) buildDisplayList();
   if (detail) renderDetail();
   if (LARGE_MQ.matches) drawCardCharts();
+  drawWeatherBg();
+  wxBuilt = null;
+  renderWeatherDetail();
   disarmPurge();
   syncSettings();
 }
@@ -1152,7 +1156,11 @@ window.addEventListener('resize', () => {
   if (!$('chartOv').hidden) loadChart();
   if (detail) renderDetail();
   if (LARGE_MQ.matches) { drawCardCharts(); drawWeatherChart(); }
+  drawWeatherBg();
+  renderWeatherDetail();
 });
+// Selawik may load after the first draw and move the icon and the temperature.
+document.fonts?.ready.then(drawWeatherBg);
 
 /* ---------------- weather ---------------- */
 
@@ -1181,9 +1189,189 @@ function drawWeatherChart() {
   });
 }
 
+/**
+ * Next 24 hours behind the icon and the temperature (all layouts but large
+ * screens): faded under them, clear in the space between.
+ */
+function drawWeatherBg() {
+  const canvas = $('wBgChart');
+  const temps = lastHours.map((h) => h.temp);
+  if (LARGE_MQ.matches || temps.length < 2) {
+    charts.draw(canvas, { t: [], series: [] });
+    return;
+  }
+  const lo = Math.min(...temps);
+  const hi = Math.max(...temps);
+  const span = Math.max(hi - lo, 4);
+  // Margins keep the curve off the card edges and below the header.
+  const geom = charts.draw(canvas, {
+    t: temps.map((_, i) => i), min: lo - span * 0.35, max: hi + span * 0.3,
+    series: [{ values: temps, color: palette().warn, fill: true, width: 2 }],
+  });
+  if (!geom) return;
+  const box = canvas.getBoundingClientRect();
+  const icon = $('wIcon').getBoundingClientRect();
+  const reading = document.querySelector('.wReading').getBoundingClientRect();
+  const at = (px) => Math.min(1, Math.max(0, (px - box.left) / box.width));
+  // The Meteocons drawing only fills the middle of its box.
+  const a = at(icon.right - icon.width * 0.12);
+  const b = at(reading.left);
+  const LOW = 0.22;
+  const HIGH = 0.95;
+  // Wide, soft transitions; in a narrow card the gap would only make a bright
+  // strip, so the curve stays faded all along.
+  const stops = b - a > 0.2
+    ? [[0, LOW], [a - 0.02, LOW], [a + 0.1, HIGH], [b - 0.1, HIGH], [b + 0.02, LOW], [1, LOW]]
+    : [[0, LOW], [1, LOW]];
+  const ctx = canvas.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, box.width, 0);
+  let prev = 0;
+  for (const [pos, alpha] of stops) {
+    prev = Math.max(prev, Math.min(1, Math.max(0, pos)));
+    g.addColorStop(prev, `rgba(0, 0, 0, ${alpha})`);
+  }
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-in';
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, box.width, box.height);
+  ctx.restore();
+}
+
+/* ---- weather detail (click on the 24-hour curve) ---- */
+
+let wxHover = null;
+let wxBuilt = null;
+let wxCharts = [];
+
+function weatherDefs(hours) {
+  const p = palette();
+  const col = (k) => hours.map((h) => h[k]);
+  const temps = [...col('temp'), ...col('feels')];
+  const compass = t('compass').split(',');
+  const total = hours.reduce((sum, h) => sum + (h.rain || 0), 0);
+  return [
+    {
+      label: t('detail.temp'), fmt: (v) => `${num(v, 0)}°`,
+      min: Math.floor(Math.min(...temps)) - 2, max: Math.ceil(Math.max(...temps)) + 2,
+      series: [{ values: col('temp'), color: p.warn, fill: true, width: 2 }, { values: col('feels'), color: p.faint, dash: [5, 4] }],
+      value: (h) => `${Math.round(h.temp)}° · ${t('wx.feels', { temp: `${Math.round(h.feels)}°` })}`,
+    },
+    {
+      label: `${t('wx.rainChance')} · ${t('wx.rainTotal', { mm: num(total, total % 1 ? 1 : 0) })}`,
+      fmt: (v) => `${num(v, 0)} %`, max: 100,
+      series: [{ values: col('rainProb'), color: p.accent, fill: true }],
+      value: (h) => `${h.rainProb} % · ${num(h.rain, h.rain % 1 ? 1 : 0)} mm`,
+    },
+    {
+      label: t('weather.wind'), fmt: (v) => `${num(v, 0)} km/h`, floor: 10,
+      series: [{ values: col('wind'), color: p.up, fill: true }, { values: col('gusts'), color: p.faint, dash: [5, 4] }],
+      value: (h) => `${Math.round(h.wind)} km/h ${compass[Math.round(h.windDeg / 45) % 8]} · ${t('wx.gusts', { gusts: Math.round(h.gusts) })}`,
+    },
+  ];
+}
+
+function openWeatherDetail() {
+  if (lastHours.length < 2) return;
+  wxHover = null;
+  wxBuilt = null;
+  $('wxOv').hidden = false;
+  renderWeatherDetail();
+}
+
+/** Draws the open weather detail from the last forecast (pointer: hover event). */
+function renderWeatherDetail(pointer) {
+  if ($('wxOv').hidden) return;
+  const hours = lastHours;
+  if (hours.length < 2) {
+    close($('wxOv'));
+    return;
+  }
+  const w = lastWeather?.data;
+  const key = `wmo.${w?.code}`;
+  $('wxTitle').textContent = `${t('weather.title')} · ${w?.site || ''}`;
+  $('wxSub').textContent = w
+    ? `${t('wx.next24')} · ${key in i18n.STRINGS.en ? t(key) : t('weather.unknown')}, ${Math.round(w.temp)} °C`
+    : t('wx.next24');
+  const sun = w?.sun?.[0];
+  $('wxSun').textContent = sun && Number.isFinite(sun.rise) ? t('wx.sun', { rise: hhmm(sun.rise), set: hhmm(sun.set) }) : '';
+
+  const defs = weatherDefs(hours);
+  const shape = `${hours.length}:${i18n.lang}`;
+  if (wxBuilt !== shape) buildWeatherDetail(defs, hours);
+  wxBuilt = shape;
+
+  const font = chartFont();
+  const colors = chartColors();
+  const fmtT = (i) => cityHour(hours[i].hour);
+  const gutter = charts.labelWidth(font, defs.flatMap((d) => charts.axisLabels({ ...d, fmtY: d.fmt })));
+  let geom = null;
+  defs.forEach((d, k) => {
+    const c = wxCharts[k];
+    const g = charts.draw(c.canvas, { t: hours.map((_, i) => i), series: d.series, min: d.min, max: d.max, floor: d.floor,
+      fmtY: d.fmt, fmtT, font, colors, hover: wxHover, gutter });
+    c.geom = g;
+    if (k === 0) geom = g;
+    c.label.firstChild.textContent = d.label;
+    c.now.textContent = d.value(hours[wxHover ?? 0]);
+  });
+  // Icons above the temperature curve, on its hours (every other one when tight).
+  if (geom) {
+    const stepPx = geom.pw / (hours.length - 1);
+    const every = stepPx < 30 ? 2 : 1;
+    [...$('wxIcons').children].forEach((img, i) => {
+      img.hidden = i % every !== 0;
+      img.style.left = `${geom.pad.l + i * stepPx}px`;
+    });
+  }
+  const tip = $('sdTip');
+  if (wxHover != null && pointer) {
+    const h = hours[wxHover];
+    tip.textContent = [cityHour(h.hour), ...defs.map((d) => t('detail.labelValue', { label: d.label.split(' · ')[0], value: d.value(h) }))].join('\n');
+    tip.hidden = false;
+    tip.style.left = `${Math.min(pointer.clientX + 14, innerWidth - tip.offsetWidth - 6)}px`;
+    tip.style.top = `${Math.max(6, pointer.clientY - tip.offsetHeight - 10)}px`;
+  } else if (!pointer) {
+    tip.hidden = true;
+  }
+}
+
+function buildWeatherDetail(defs, hours) {
+  const body = $('wxBody');
+  const icons = el('div', 'wxIcons');
+  icons.id = 'wxIcons';
+  for (const h of hours) {
+    const img = document.createElement('img');
+    img.src = `icons/weather/${h.icon}.svg`;
+    img.alt = '';
+    icons.appendChild(img);
+  }
+  body.replaceChildren(icons);
+  wxCharts = defs.map(() => {
+    const box = el('div', 'sdChart');
+    const label = el('div', 'sdLabel');
+    label.append(el('span'), el('span', 'sdNow'));
+    const canvas = document.createElement('canvas');
+    box.append(label, canvas);
+    body.appendChild(box);
+    const entry = { canvas, label, now: label.lastChild, geom: null };
+    canvas.addEventListener('mousemove', (e) => {
+      wxHover = charts.indexAt(canvas, entry.geom, e.clientX);
+      renderWeatherDetail(e);
+    });
+    canvas.addEventListener('mouseleave', () => {
+      wxHover = null;
+      renderWeatherDetail();
+    });
+    return entry;
+  });
+}
+
+$('wxMap').addEventListener('click', () => window.dash.openWeatherMap());
+
 function renderNoSite() {
   lastHours = [];
   drawWeatherChart();
+  drawWeatherBg();
   $('wHourly').replaceChildren();
   $('wIcon').hidden = true;
   $('wSite').textContent = '--';
@@ -1225,6 +1413,8 @@ let lastHours = [];
 function renderHourly(hours) {
   lastHours = hours;
   drawWeatherChart();
+  drawWeatherBg();
+  renderWeatherDetail();
   $('wHourly').replaceChildren(...hours.slice(0, 12).map((h) => {
     const cell = el('div', 'wHour');
     const img = document.createElement('img');
@@ -1262,6 +1452,13 @@ async function openWeather() {
   $('siteSearch').focus();
 }
 $('weather').addEventListener('click', openWeather);
+for (const id of ['wMain', 'wChart']) {
+  $(id).addEventListener('click', (e) => {
+    if (needsSite || lastHours.length < 2) return;   // the card handler picks a city
+    e.stopPropagation();
+    openWeatherDetail();
+  });
+}
 $('weather').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openWeather(); }
 });

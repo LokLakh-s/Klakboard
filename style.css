@@ -190,7 +190,11 @@ html, body {
 .wOpen { font-size: 1.4rem; color: var(--accent); white-space: nowrap; }
 
 /* Takes the card's free height, content centred vertically. */
-.wMain { flex: 1 1 auto; display: flex; align-items: center; gap: 1.4rem; min-height: 0; }
+.wMain { flex: 1 1 auto; display: flex; align-items: center; gap: 1.4rem; min-height: 0; position: relative; }
+/* Next 24 hours behind the icon and the temperature (faded under them by
+   renderer.js); large screens have their own chart instead. */
+.wBgChart { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.wMain > :not(.wBgChart) { position: relative; }
 /* The Meteocons drawing only fills ~70 % of its box: negative margins keep
    the box from inflating the card. */
 .wIcon { flex: 0 0 auto; width: 9rem; height: 9rem; margin: -1.2rem -0.6rem -1.2rem -1rem; }
@@ -526,6 +530,7 @@ html, body {
   .card.net .netSpark { display: none; }
   .wHourly { display: grid; }
   .wMain { flex: 0 0 auto; }
+  .wBgChart { display: none; }
   .wChart { display: block; }
 }
 
@@ -557,6 +562,9 @@ html, body {
   font-variant-numeric: tabular-nums; white-space: pre;
 }
 .sdTip[hidden] { display: none; }
+.wxIcons { position: relative; height: 2.6rem; flex: 0 0 auto; }
+.wxIcons img { position: absolute; top: 0; width: 2.6rem; height: 2.6rem; transform: translateX(-50%); }
+.wxFoot { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin-top: 0.45rem; }
 
 /* ================= night mode ================= */
 

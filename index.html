@@ -32,7 +32,10 @@
           <span class="wPlace"><span data-i18n="weather.title">Weather</span> · <span id="wSite">--</span></span>
           <span class="wOpen"><span data-i18n="weather.map">Map</span> &#8599;</span>
         </div>
-        <div class="wMain">
+        <!-- The next 24 hours as a faded curve behind the icon and the
+             temperature; a click on it opens the weather detail. -->
+        <div class="wMain" id="wMain" data-i18n-title="wx.open" title="Show the next 24 hours">
+          <canvas class="wBgChart" id="wBgChart"></canvas>
           <img class="wIcon" id="wIcon" alt="" hidden />
           <div class="wReading">
             <span class="wTemp"><span id="wTemp">--</span><span class="wUnit">°C</span></span>
@@ -43,7 +46,7 @@
           </div>
         </div>
         <!-- Temperature over the next 24 hours, on large screens only. -->
-        <canvas class="wChart" id="wChart"></canvas>
+        <canvas class="wChart" id="wChart" data-i18n-title="wx.open" title="Show the next 24 hours"></canvas>
         <div class="wStats">
           <div class="wStat"><span class="wLbl" data-i18n="weather.minMax">Min / max</span><span class="wVal" id="wMinMax">--</span></div>
           <div class="wStat"><span class="wLbl" id="wRainLbl" data-i18n="weather.rain">Rain</span><span class="wVal" id="wRain">--</span></div>
@@ -145,7 +148,6 @@
         <button class="iBtn" data-close>&#10005;</button>
       </div>
       <div class="sdBody" id="sdBody"></div>
-      <div class="sdTip" id="sdTip" hidden></div>
       <div class="ranges" id="sdRanges">
         <button class="chip" data-hrange="1m" data-i18n="range.1m">1 min</button>
         <button class="chip active" data-hrange="10m" data-i18n="range.10m">10 min</button>
@@ -153,6 +155,27 @@
       </div>
     </div>
   </div>
+
+  <!-- ================= weather detail overlay ================= -->
+  <div class="ov" id="wxOv" hidden>
+    <div class="ovBox chartBox">
+      <div class="ovHead">
+        <div>
+          <div class="ovTitle" id="wxTitle">--</div>
+          <div class="sdSub" id="wxSub"></div>
+        </div>
+        <button class="iBtn" data-close>&#10005;</button>
+      </div>
+      <div class="sdBody" id="wxBody"></div>
+      <div class="wxFoot">
+        <span class="sdSub" id="wxSun"></span>
+        <button class="chip" id="wxMap"><span data-i18n="weather.map">Map</span> &#8599;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Values under the pointer, for the detail views. -->
+  <div class="sdTip" id="sdTip" hidden></div>
 
   <!-- ================= add overlay ================= -->
   <div class="ov" id="addOv" hidden>

@@ -52,7 +52,8 @@ async function getWeather(site) {
     forecast_days: '2',
     current: 'temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_gusts_10m,wind_direction_10m',
     daily: 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,sunrise,sunset',
-    hourly: 'cape,temperature_2m,weather_code,is_day,precipitation_probability',
+    hourly: 'cape,temperature_2m,apparent_temperature,weather_code,is_day,precipitation_probability,'
+      + 'precipitation,wind_speed_10m,wind_gusts_10m,wind_direction_10m',
   });
   const res = await fetch(`${OPEN_METEO}?${params}`, { signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
@@ -86,12 +87,19 @@ async function getWeather(site) {
     windDeg: d.current.wind_direction_10m,
     windMax: Math.round(d.daily.wind_speed_10m_max[0]),
     storm: stormLevel(capeMax),
-    // Next 24 hours, for large screens: hour (local to the city), icon, °C, rain %.
+    // Next 24 hours: hour (local to the city), icon, °C, feels-like, rain chance
+    // and amount (mm), wind and gusts (km/h).
     hourly: nextHours.map(({ t, i }) => ({
       hour: Number(t.slice(11, 13)),
       icon: iconName(d.hourly.weather_code[i], d.hourly.is_day[i] === 1),
+      code: d.hourly.weather_code[i],
       temp: d.hourly.temperature_2m[i],
+      feels: d.hourly.apparent_temperature[i],
       rainProb: d.hourly.precipitation_probability[i],
+      rain: d.hourly.precipitation[i],
+      wind: d.hourly.wind_speed_10m[i],
+      gusts: d.hourly.wind_gusts_10m[i],
+      windDeg: d.hourly.wind_direction_10m[i],
     })),
     // Sunrise and sunset of today and tomorrow (missing during polar night or day).
     sun: d.daily.sunrise.map((rise, i) => ({ rise: toMs(rise), set: toMs(d.daily.sunset[i]) })),
