@@ -21,9 +21,9 @@ const DEFAULT_CONFIG = {
   theme: 'dark',
   netTotals: { rx: 0, tx: 0 },
   bounds: null,
-  display: null,   // ecran choisi dans "Plein ecran sur…" : { id, width, height }
-  weatherSite: null,   // choisie au premier lancement
-  night: { enabled: true, dim: 0.5 },   // assombrissement du coucher au lever du soleil
+  display: null,   // screen picked in "Full screen on…": { id, width, height }
+  weatherSite: null,   // picked on first launch
+  night: { enabled: true, dim: 0.5 },   // dims the screen from sunset to sunrise
   items: [
     { kind: 'metal', code: 'XAU' },
     { kind: 'metal', code: 'XAG' },
@@ -34,7 +34,7 @@ const DEFAULT_CONFIG = {
   ],
 };
 
-/* Doit refleter --bg de chaque theme dans style.css. */
+/* Must match --bg of each theme in style.css. */
 const THEME_BG = {
   dark: '#0b0e14', light: '#e8ebf0', red: '#150e10', forest: '#0b100a',
   green: '#0a1210', yellow: '#14120a', purple: '#100d16',
@@ -47,8 +47,8 @@ let weatherTimer;
 let pendingUpdate = null;
 let tray;
 let totalsDirty = false;
-// Distingue une vraie sortie d'une simple mise en veilleuse dans la zone de
-// notifications : sans ce drapeau, la fenetre ne pourrait plus jamais se fermer.
+// Tells a real quit from closing to the notification area: without it the
+// window could never close.
 let isQuitting = false;
 
 function quitApp() {
@@ -59,7 +59,7 @@ function quitApp() {
 
 const configPath = () => path.join(app.getPath('userData'), 'dashboard.json');
 
-// Copie profonde : la config modifie ses objets (items, netTotals) sur place.
+// Deep copy: the config mutates its objects (items, netTotals) in place.
 const defaultConfig = () => JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 
 function loadConfig() {
@@ -68,16 +68,16 @@ function loadConfig() {
   try {
     raw = fs.readFileSync(file, 'utf8');
   } catch {
-    return defaultConfig(); // premier lancement
+    return defaultConfig(); // first launch
   }
   try {
     const loaded = { ...defaultConfig(), ...JSON.parse(raw) };
-    // Le theme "blue" a ete remplace par "forest".
+    // The "blue" theme was replaced by "forest".
     if (loaded.theme === 'blue') loaded.theme = 'forest';
     return loaded;
   } catch (err) {
-    // Fichier illisible : on le met de cote plutot que de l'ecraser a la
-    // prochaine sauvegarde, les lignes suivies restent recuperables a la main.
+    // Unreadable file: set aside rather than overwritten on the next save, so the
+    // tracked rows can still be recovered by hand.
     try {
       fs.renameSync(file, `${file}.illisible-${Date.now()}`);
     } catch {}
@@ -87,8 +87,8 @@ function loadConfig() {
 }
 
 /**
- * Ecriture dans un fichier temporaire puis renommage : une coupure en pleine
- * ecriture laisse l'ancienne config intacte au lieu d'un JSON tronque.
+ * Writes a temporary file then renames it: a power cut mid-write leaves the
+ * previous config intact instead of truncated JSON.
  */
 function saveConfig() {
   const file = configPath();
@@ -98,7 +98,7 @@ function saveConfig() {
     fs.writeFileSync(tmp, data);
     fs.renameSync(tmp, file);
   } catch {
-    // Renommage refuse (antivirus qui tient le fichier, par exemple) : ecriture directe.
+    // Rename refused (e.g. an antivirus holding the file): write directly.
     try {
       fs.writeFileSync(file, data);
     } catch (err) {
@@ -107,14 +107,14 @@ function saveConfig() {
   }
 }
 
-/* ---------------- fenetre ---------------- */
+/* ---------------- window ---------------- */
 
-/** Ecran a recouvrir (voir display.js), ou null s'il n'est pas branche. */
+/** Screen to cover (see display.js), or null when it is not connected. */
 function targetDisplay() {
   return display.findTargetDisplay(screen.getAllDisplays(), screen.getPrimaryDisplay().id, config.display);
 }
 
-/** Fenetre ordinaire de 960 x 640 au centre de l'ecran principal. */
+/** Ordinary 960 x 640 window centred on the primary screen. */
 function centeredOnPrimary() {
   const wa = screen.getPrimaryDisplay().workArea;
   const width = Math.min(960, wa.width);
@@ -142,11 +142,11 @@ function createWindow() {
     y: b.y,
     width: b.width,
     height: b.height,
-    show: false,             // affichee par placeWindow(), une fois son ecran connu
-    frame: false,            // pas de bandeau de fenetre
+    show: false,             // shown by placeWindow() once its screen is known
+    frame: false,            // no title bar
     resizable: true,
-    skipTaskbar: true,       // presente dans la zone de notifications, pas la barre des taches
-    // Accordee au theme, sinon un flash sombre precede le rendu en theme clair.
+    skipTaskbar: true,       // lives in the notification area, not the taskbar
+    // Matches the theme, otherwise a dark flash precedes a light theme.
     backgroundColor: THEME_BG[config.theme] || THEME_BG.dark,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -155,18 +155,16 @@ function createWindow() {
     },
   });
 
-  // La fenetre n'affiche que index.html : aucune navigation ni fenetre surgissante
-  // (la carte meteo s'ouvre dans le navigateur, via shell).
+  // The window only shows index.html: no navigation, no pop-up (the weather map
+  // opens in the browser, through shell).
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (e) => e.preventDefault());
 
   mainWindow.loadFile('index.html');
   placeWindow(true);
 
-  // 'resize' et 'move' se declenchent des dizaines de fois par seconde pendant
-  // un glisser : ecrire le fichier a chaque evenement, c'etait des centaines
-  // d'ecritures disque pour un seul deplacement. On ne garde que la position
-  // finale, 400 ms apres le dernier evenement.
+  // 'resize' and 'move' fire dozens of times per second while dragging: only the
+  // final position is saved, 400 ms after the last event.
   let persistTimer;
   const persist = () => {
     clearTimeout(persistTimer);
@@ -180,8 +178,8 @@ function createWindow() {
   mainWindow.on('resize', persist);
   mainWindow.on('move', persist);
 
-  // Fermer met en veilleuse dans la zone de notifications ; seul quitApp()
-  // laisse reellement passer la fermeture.
+  // Closing hides the window to the notification area; only quitApp() lets it
+  // really close.
   mainWindow.on('close', (e) => {
     if (!isQuitting) {
       e.preventDefault();
@@ -191,14 +189,14 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-/* ---------------- zone de notifications ---------------- */
+/* ---------------- notification area ---------------- */
 
 function showWindow() {
   if (!mainWindow) return;
   if (config.coverTaskbar && !targetDisplay()) {
-    // Affichage demande alors que l'ecran du tableau de bord est absent :
-    // fenetre ordinaire sur l'ecran principal, sans le recouvrir. Elle
-    // rejoindra son ecran quand il reviendra (onDisplaysChanged).
+    // Shown while the dashboard screen is missing: ordinary window on the
+    // primary screen, without covering it. It moves back to its screen when that
+    // screen returns (onDisplaysChanged).
     awaitingDisplay = false;
     mainWindow.setAlwaysOnTop(false);
     mainWindow.setBounds(centeredOnPrimary());
@@ -206,8 +204,8 @@ function showWindow() {
     return;
   }
   mainWindow.show();
-  // Le niveau doit etre reaffirme apres un show(), sinon Windows repose la
-  // fenetre sous la barre des taches.
+  // The level must be set again after show(), otherwise Windows puts the window
+  // back under the taskbar.
   if (config.coverTaskbar) mainWindow.setAlwaysOnTop(true, 'screen-saver');
 }
 
@@ -217,7 +215,7 @@ function toggleWindow() {
   else showWindow();
 }
 
-/** Ouvre un panneau (settings ou add) dans la fenetre, depuis le menu de la zone de notifications. */
+/** Opens a panel (settings or add) in the window, from the tray menu. */
 function openPanel(name) {
   showWindow();
   if (mainWindow) mainWindow.webContents.send('open-panel', name);
@@ -257,22 +255,21 @@ function createTray() {
   tray.on('click', toggleWindow);
 }
 
-/* ---------------- placement sur l'ecran ---------------- */
+/* ---------------- placement ---------------- */
 
-// Vrai quand la fenetre est masquee parce que son ecran manque : elle
-// reapparait d'elle-meme a son retour. Masquee par l'utilisateur, elle le reste.
+// True while the window is hidden because its screen is missing: it comes back
+// by itself with the screen. Hidden by the user, it stays hidden.
 let awaitingDisplay = false;
 
 /**
- * Recale la fenetre sur son ecran. En mode recouvrement, le niveau
- * 'screen-saver' est le seul qui passe au-dessus de la barre des taches
- * Windows, et la fenetre prend les bounds PHYSIQUES de l'ecran (workArea
- * exclut justement la barre). Si cet ecran est absent (pas encore detecte a
- * l'ouverture de session, debranche), la fenetre est masquee : recouvrir
- * l'ecran principal au premier plan le rendrait inutilisable.
+ * Fits the window to its screen. In cover mode, 'screen-saver' is the only
+ * level above the Windows taskbar, and the window takes the screen's PHYSICAL
+ * bounds (workArea excludes the taskbar). When that screen is missing (not
+ * detected yet at login, unplugged), the window is hidden: covering the primary
+ * screen on top of everything would make it unusable.
  *
- * @param {boolean} reveal la fenetre doit etre visible (demarrage) ; sinon sa
- *   visibilite actuelle est conservee.
+ * @param {boolean} reveal the window must be visible (startup); otherwise its
+ *   current visibility is kept.
  */
 function placeWindow(reveal = false) {
   if (!mainWindow) return;
@@ -295,25 +292,25 @@ function placeWindow(reveal = false) {
   else mainWindow.setAlwaysOnTop(true, 'screen-saver');
 }
 
-// Un branchement d'ecran produit une rafale d'evenements : on attend la fin.
+// Plugging a screen fires a burst of events: wait for the last one.
 let displayTimer;
 function onDisplaysChanged() {
   clearTimeout(displayTimer);
   displayTimer = setTimeout(() => placeWindow(), 500);
 }
 
-/* ---------------- marches ---------------- */
+/* ---------------- markets ---------------- */
 
-// Derniere cotation reussie par ligne ({ price, change24h, at }) : une source en
-// panne laisse affiche le dernier cours connu, grise, au lieu de "--".
+// Last successful quote per row ({ price, change24h, at }): a failing source
+// keeps the last known price on screen, greyed out, instead of "--".
 const lastGood = new Map();
 let marketsBusy = false;
 let marketsAgain = false;
 
 async function refreshMarkets() {
   if (!mainWindow) return;
-  // Un cycle a la fois ; une demande pendant un cycle (ligne ajoutee) en relance
-  // un juste apres.
+  // One cycle at a time; a request during a cycle (row added) runs another one
+  // right after.
   if (marketsBusy) { marketsAgain = true; return; }
   marketsBusy = true;
   try {
@@ -338,7 +335,7 @@ async function refreshMarkets() {
         quotes: out,
         updatedAt: now,
         errors,
-        // Au-dela, un cours est juge perime : trois cycles rates, deux minutes au moins.
+        // Older quotes are stale: three missed cycles, two minutes at least.
         staleMs: Math.max(3 * config.refreshMs, 120000),
       });
     }
@@ -353,9 +350,9 @@ function restartMarketTimer() {
   marketTimer = setInterval(refreshMarkets, config.refreshMs);
 }
 
-/* ---------------- mini-courbes ---------------- */
+/* ---------------- sparklines ---------------- */
 
-// Une courbe de 12 h ne bouge guere en 20 s : rafraichie toutes les 5 min.
+// A 12-hour curve barely moves in 20 s: refreshed every 5 min.
 const SPARK_EVERY_MS = 5 * 60 * 1000;
 let sparkTimer;
 
@@ -365,7 +362,7 @@ async function refreshSparks() {
   if (mainWindow) mainWindow.webContents.send('sparks', sparks);
 }
 
-/* ---------------- meteo ---------------- */
+/* ---------------- weather ---------------- */
 
 async function refreshWeather() {
   if (!mainWindow) return;
@@ -385,10 +382,10 @@ async function refreshWeather() {
   }
 }
 
-/* ---------------- mode nuit ---------------- */
+/* ---------------- night mode ---------------- */
 
-// Heures de soleil de la ville meteo : la nuit est evaluee chaque minute, la
-// meteo n'etant rafraichie que toutes les 15 min.
+// Sun times of the weather city: night is evaluated every minute, while the
+// weather is only refreshed every 15 min.
 let lastSun = null;
 let nightTimer;
 
@@ -404,12 +401,12 @@ function applyNight() {
   });
 }
 
-/* ---------------- mises a jour ---------------- */
+/* ---------------- updates ---------------- */
 
 const tokenPath = () => path.join(app.getPath('userData'), token.PLAIN);
 const readUpdateToken = () => token.readToken(app.getPath('userData'), safeStorage);
 
-// L'archive de l'appli ne tourne que sur le moteur pour lequel elle a ete construite.
+// The app archive only runs on the Electron major it was built for.
 const findUpdate = () =>
   updates.findUpdate(APP_VERSION, process.versions.electron.split('.')[0], readUpdateToken());
 
@@ -446,9 +443,9 @@ async function checkForUpdates({ manual = false } = {}) {
 }
 
 /**
- * Remplace resources/app.asar par la nouvelle version. Le fichier courant est
- * verrouille tant que l'appli tourne : updater.js (copie hors de l'archive) attend
- * la fin du process, remplace le fichier puis relance Klakboard.
+ * Replaces resources/app.asar with the new version. The current file is locked
+ * while the app runs: updater.js (copied out of the archive) waits for the
+ * process to exit, swaps the file, then restarts Klakboard.
  */
 function swapAndRelaunch(staged, target) {
   const helper = path.join(os.tmpdir(), 'klakboard-updater.js');
@@ -467,8 +464,8 @@ async function installUpdate(update = pendingUpdate) {
   if (!update || installing) return;
   pendingUpdate = update;
   refreshTrayMenu();
-  // Sans fenetre parente : la boite s'ouvre sur l'ecran principal, la ou l'on a
-  // clique, et non sur le petit ecran du dashboard.
+  // No parent window: the dialog opens on the primary screen, where the user
+  // clicked, not on the small dashboard screen.
   const viaInstaller = update.kind === 'installer';
   const { response } = await dialog.showMessageBox({
     type: 'question',
@@ -486,16 +483,16 @@ async function installUpdate(update = pendingUpdate) {
 
   installing = true;
   try {
-    // Infos relues juste avant le telechargement : celles de la notification
-    // peuvent dater d'avant la publication de l'empreinte par GitHub.
+    // Release data read again right before downloading: the notification's may
+    // predate GitHub publishing the digest.
     const fresh = await findUpdate().catch(() => null);
     if (fresh?.version === update.version) update = fresh;
     if (viaInstaller) {
-      // Installeur non signe, mais ecrit par l'appli et non par un navigateur :
-      // sans marque "telecharge d'Internet", SmartScreen ne s'interpose pas.
+      // Unsigned installer, but written by the app rather than a browser: without the
+      // "downloaded from the Internet" mark, SmartScreen does not step in.
       const setup = path.join(os.tmpdir(), update.asset.name);
       await updates.downloadAsset(update.asset, readUpdateToken(), setup);
-      // On ne quitte qu'une fois l'installeur effectivement lance.
+      // Quit only once the installer has actually started.
       await new Promise((resolve, reject) => {
         const child = spawn(setup, [], { detached: true, stdio: 'ignore' });
         child.once('spawn', resolve);
@@ -515,14 +512,14 @@ async function installUpdate(update = pendingUpdate) {
   }
 }
 
-/* ---------------- cycle de vie ---------------- */
+/* ---------------- lifecycle ---------------- */
 
-// Windows n'affiche les notifications que pour un AppUserModelID connu : celui
-// du raccourci cree par l'installeur, c'est-a-dire build.appId.
+// Windows only shows notifications for a known AppUserModelID: the one of the
+// shortcut created by the installer, i.e. build.appId.
 if (process.platform === 'win32') app.setAppUserModelId('com.klakh.klakboard');
 
-// Une seule instance : relancer Klakboard pendant qu'elle tourne (ou pendant une
-// relance de mise a jour) affiche la fenetre existante au lieu d'en ouvrir une autre.
+// Single instance: starting Klakboard while it runs (or while an update
+// restarts it) shows the existing window instead of opening another one.
 const isPrimaryInstance = app.requestSingleInstanceLock();
 if (!isPrimaryInstance) app.exit(0);
 app.on('second-instance', showWindow);
@@ -533,16 +530,15 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
 
-  // Filet de securite : sans bandeau de fenetre et au-dessus de la barre des
-  // taches, un rendu plante laisserait une fenetre impossible a fermer.
+  // Safety net: with no title bar and above the taskbar, a crashed renderer would
+  // leave a window that cannot be closed.
   globalShortcut.register('CommandOrControl+Shift+Q', quitApp);
 
   screen.on('display-added', onDisplaysChanged);
   screen.on('display-removed', onDisplaysChanged);
   screen.on('display-metrics-changed', onDisplaysChanged);
 
-  // Au reveil, cours et meteo datent de la mise en veille : on n'attend pas
-  // le prochain cycle.
+  // After sleep, quotes and weather are outdated: do not wait for the next cycle.
   powerMonitor.on('resume', () => {
     refreshMarkets();
     refreshSparks();
@@ -565,8 +561,8 @@ app.whenReady().then(() => {
     setInterval(checkForUpdates, 30 * 60 * 1000);
 
     system.start((sample) => {
-      // Les cumuls reseau s'accumulent a partir des deltas : les compteurs de
-      // l'OS repartent de zero a chaque redemarrage, un absolu serait faux.
+      // Network totals add up deltas: OS counters restart from zero at each boot, an
+      // absolute value would be wrong.
       config.netTotals.rx += sample.net.delta.rx;
       config.netTotals.tx += sample.net.delta.tx;
       totalsDirty = true;
@@ -577,15 +573,14 @@ app.whenReady().then(() => {
   });
 });
 
-// Les cumuls reseau bougent a chaque seconde ; les persister aussi souvent
-// userait le disque pour rien. Une ecriture par minute suffit, et l'arret de
-// l'application sauvegarde de toute facon.
+// Network totals change every second; saving them that often would wear the
+// disk for nothing. Once a minute is enough, and quitting saves anyway.
 setInterval(() => {
   if (totalsDirty) { saveConfig(); totalsDirty = false; }
 }, 60000);
 
-// L'application survit a la fermeture de sa fenetre : elle vit dans la zone
-// de notifications jusqu'a "Quitter".
+// The app survives its window being closed: it lives in the notification area
+// until "Quit".
 app.on('window-all-closed', () => {});
 
 app.on('before-quit', () => {
@@ -607,14 +602,14 @@ ipcMain.handle('get-catalogs', () => ({
 }));
 
 ipcMain.handle('set-refresh', (_e, ms) => {
-  // Borne basse : en dessous, les sources sans cle API finissent par refuser.
+  // Lower bound: below it, the keyless sources end up refusing requests.
   config.refreshMs = Math.min(3600000, Math.max(5000, Number(ms) || DEFAULT_CONFIG.refreshMs));
   saveConfig();
   restartMarketTimer();
   return config;
 });
 
-/** Liste des ecrans, pour que l'utilisateur choisisse ou projeter le widget. */
+/** Connected screens, so the user can pick where to show the dashboard. */
 ipcMain.handle('get-displays', () => {
   const current = mainWindow
     ? screen.getDisplayMatching(mainWindow.getBounds()).id
@@ -632,12 +627,11 @@ ipcMain.handle('get-displays', () => {
   }));
 });
 
-/** Plein ecran par-dessus la barre des taches, sur l'ecran demande. */
+/** Full screen above the taskbar, on the given screen. */
 ipcMain.handle('snap-to-display', (_e, displayId) => {
   if (!mainWindow) return config;
   const d = screen.getAllDisplays().find((x) => x.id === displayId) || screen.getPrimaryDisplay();
-  // Retenu pour les demarrages suivants : sans cela, l'appli revenait toujours
-  // sur le petit ecran, quel que soit le choix fait ici.
+  // Remembered for the next launches.
   config.display = display.displayKey(d);
   config.coverTaskbar = true;
   config.bounds = d.bounds;
@@ -647,9 +641,9 @@ ipcMain.handle('snap-to-display', (_e, displayId) => {
 });
 
 /**
- * Taille fenetree, ancree sur l'ecran courant et bornee a sa surface. Passe en
- * mode fenetre : en mode recouvrement, la fenetre reprendrait tout l'ecran au
- * prochain demarrage ou changement d'ecran.
+ * Windowed size, anchored on the current screen and clamped to it. Switches to
+ * window mode: in cover mode the window would take the whole screen again at
+ * the next launch or screen change.
  */
 ipcMain.handle('set-resolution', (_e, { width, height }) => {
   if (!mainWindow) return config;
@@ -668,10 +662,9 @@ ipcMain.handle('set-resolution', (_e, { width, height }) => {
 });
 
 /**
- * Demarrage automatique a l'ouverture de session (cle Run du registre).
- * On renvoie toujours l'etat REEL lu depuis l'OS et non `config` : l'utilisateur
- * peut desactiver l'entree depuis le Gestionnaire des taches, auquel cas la
- * config mentirait.
+ * Start at login (Run registry key on Windows). Always returns the REAL state
+ * read from the OS, not `config`: the user may disable the entry from Task
+ * Manager, and the config would then be wrong.
  */
 function autoLaunchState() {
   try {
@@ -688,8 +681,8 @@ ipcMain.handle('set-auto-launch', (_e, on) => {
     app.setLoginItemSettings({
       openAtLogin: !!on,
       path: process.execPath,
-      // En developpement, process.execPath est electron.exe : sans le chemin du
-      // projet en argument, l'entree lancerait Electron a vide.
+      // In development process.execPath is electron.exe: without the project path as
+      // argument, the entry would start an empty Electron.
       args: app.isPackaged ? [] : [path.resolve(process.argv[1] || '.')],
     });
   } catch (err) {
@@ -716,8 +709,8 @@ ipcMain.handle('set-zoom', (_e, z) => {
 
 ipcMain.handle('set-cover-taskbar', (_e, on) => {
   config.coverTaskbar = !!on;
-  // Aucun ecran choisi ni petit ecran detecte : on recouvre celui ou se trouve
-  // la fenetre, plutot que de la masquer.
+  // No screen picked and no small screen detected: cover the screen the window
+  // is on rather than hiding it.
   if (config.coverTaskbar && mainWindow && !targetDisplay()) {
     config.display = display.displayKey(screen.getDisplayMatching(mainWindow.getBounds()));
   }
@@ -802,7 +795,7 @@ ipcMain.handle('set-weather-site', (_e, site) => {
     label: String(site.label || '').slice(0, 60) || `${lat.toFixed(2)}, ${lon.toFixed(2)}`,
     lat,
     lon,
-    // Fuseau IANA de la ville (journee meteo, min/max) ; Open-Meteo le deduit sinon.
+    // IANA time zone of the city (weather day, min/max); Open-Meteo guesses it otherwise.
     timezone: /^[A-Za-z_+\-]+(\/[A-Za-z0-9_+\-]+)*$/.test(site.timezone || '') ? site.timezone : 'auto',
   };
   saveConfig();

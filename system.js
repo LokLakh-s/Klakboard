@@ -1,10 +1,10 @@
 /**
- * Metriques systeme, sans aucune dependance npm.
+ * System metrics, without any npm dependency.
  *
- *  CPU / RAM : module `os` (deltas de compteurs cumulatifs)
- *  GPU       : spawn `nvidia-smi` (~0.16 s, tous les GPU_MS)
- *  Reseau    : UN process long (PowerShell sous Windows, /proc/net/dev sous Linux)
- *              -- un spawn PowerShell coute 0.82 s, impensable a chaque seconde.
+ *  CPU / RAM : `os` module (deltas of cumulative counters)
+ *  GPU       : `nvidia-smi` (~0.16 s per run, every GPU_MS)
+ *  Network   : ONE long-running process (PowerShell on Windows, /proc/net/dev
+ *              on Linux): spawning PowerShell costs 0.82 s, far too slow every second.
  */
 
 const os = require('os');
@@ -25,8 +25,8 @@ function cpuSnapshot() {
 }
 
 let prevCpu = cpuSnapshot();
-// Releve une seule fois : os.cpus() reconstruit un tableau de 32 objets, le
-// rappeler chaque seconde juste pour un libelle constant etait du gaspillage.
+// Read once: os.cpus() builds one object per core, too costly every second for
+// a constant label.
 const CPU_MODEL = (os.cpus()[0] || {}).model || 'CPU';
 
 function cpuUsage() {
@@ -69,8 +69,8 @@ function pollGpu() {
     (err, stdout) => {
       if (err) {
         gpuState = null;
-        // nvidia-smi absent : pas de GPU NVIDIA, inutile d'insister. Autre echec
-        // (pilote en cours de mise a jour, delai depasse sous charge) : on retente.
+        // No nvidia-smi: no NVIDIA GPU, stop trying. Any other failure (driver being
+        // updated, timeout under load): retry later.
         gpuRetryAt = err.code === 'ENOENT' ? Infinity : Date.now() + GPU_RETRY_MS;
         return;
       }
@@ -86,17 +86,17 @@ function pollGpu() {
         util: num(parts[1]),
         memUsed: num(parts[2]),   // MiB
         memTotal: num(parts[3]),  // MiB
-        fan: num(parts[4]),       // % ("[N/A]" -> null si ventilo non pilote)
+        fan: num(parts[4]),       // % ("[N/A]" -> null when the fan is not controlled)
         temp: num(parts[5]),      // °C
       };
     }
   );
 }
 
-/* ---------------- Reseau ---------------- */
+/* ---------------- network ---------------- */
 
-// La boucle s'arrete d'elle-meme si Klakboard disparait (plantage, arret
-// force) : sans ce controle, elle tournait indefiniment en arriere-plan.
+// The loop exits by itself when Klakboard is gone (crash, killed process), so
+// it never keeps running in the background.
 const PS_NET_LOOP = `
 $ErrorActionPreference = 'SilentlyContinue'
 while ($true) {
@@ -117,7 +117,7 @@ while ($true) {
 `;
 
 function readProcNetDev() {
-  // Repli Linux/WSL : somme des interfaces physiques (hors lo / virtuelles).
+  // Linux/WSL fallback: sum of the physical interfaces (no lo, no virtual ones).
   try {
     const lines = fs.readFileSync('/proc/net/dev', 'utf8').split('\n').slice(2);
     let rx = 0;
@@ -142,14 +142,14 @@ let netTimer = null;
 let netStopped = false;
 let netRestartMs = 2000;
 let prevNet = null;      // { rx, tx, at }
-let netRate = { down: 0, up: 0 };   // octets/s ; null si les compteurs ne remontent plus
-let netDelta = { rx: 0, tx: 0 };    // octets depuis le tick precedent
+let netRate = { down: 0, up: 0 };   // bytes/s; null when the counters stop coming
+let netDelta = { rx: 0, tx: 0 };    // bytes since the previous tick
 
 function onNetCounters(rx, tx) {
   const at = Date.now();
   if (prevNet) {
     const dt = (at - prevNet.at) / 1000;
-    // Un compteur qui recule = adaptateur reinitialise : on repart de zero.
+    // A counter going backwards means the adapter was reset: start again from zero.
     const dRx = rx >= prevNet.rx ? rx - prevNet.rx : 0;
     const dTx = tx >= prevNet.tx ? tx - prevNet.tx : 0;
     if (dt > 0) netRate = { down: dRx / dt, up: dTx / dt };
@@ -158,7 +158,7 @@ function onNetCounters(rx, tx) {
   prevNet = { rx, tx, at };
 }
 
-/** Lance la boucle PowerShell, relancee avec un delai croissant si elle s'arrete. */
+/** Starts the PowerShell loop, restarted with a growing delay if it stops. */
 function spawnNetLoop() {
   const proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', PS_NET_LOOP], {
     windowsHide: true,
@@ -177,7 +177,7 @@ function spawnNetLoop() {
       }
     }
   });
-  // 'error' (spawn impossible) et 'exit' peuvent se suivre : une seule relance.
+  // 'error' (spawn failed) and 'exit' may both fire: restart only once.
   let restarted = false;
   const restart = () => {
     if (restarted) return;
@@ -203,7 +203,7 @@ function startNet() {
   }
 }
 
-/* ---------------- boucle ---------------- */
+/* ---------------- loop ---------------- */
 
 let tickTimer;
 let gpuTimer;
@@ -214,7 +214,7 @@ function start(onSample) {
   gpuTimer = setInterval(pollGpu, GPU_MS);
 
   tickTimer = setInterval(() => {
-    // Compteurs muets (boucle reseau arretee) : on n'affiche pas un debit fige.
+    // Silent counters (network loop stopped): do not show a frozen rate.
     if (prevNet && Date.now() - prevNet.at > 3 * TICK_MS) netRate = null;
     const sample = {
       cpu: cpuUsage(),
@@ -223,7 +223,7 @@ function start(onSample) {
       net: { rate: netRate, delta: netDelta },
       cpuModel: CPU_MODEL,
     };
-    // Consomme le delta : il ne doit etre comptabilise qu'une fois.
+    // Consume the delta: it must be counted only once.
     netDelta = { rx: 0, tx: 0 };
     onSample(sample);
   }, TICK_MS);

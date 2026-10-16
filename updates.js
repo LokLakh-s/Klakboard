@@ -1,11 +1,11 @@
 /**
- * Verification des nouvelles versions via les releases GitHub (tags klakboard-v<semver>).
- * Le depot etant prive, l'API demande un token en lecture seule, fourni par l'appelant.
+ * Looks for new versions in the GitHub releases (tags klakboard-v<semver>). The
+ * repository is public: the token, if any, is optional.
  *
- * Une release porte l'installeur et l'archive de l'appli, nommee d'apres la
- * version majeure d'Electron pour laquelle elle a ete construite
- * (app-electron33.asar). Une archive ne tourne que sur ce moteur : si la
- * release n'en a pas pour le moteur installe, il faut passer par l'installeur.
+ * A release carries the installer and the app archive, named after the Electron
+ * major it was built for (app-electron44.asar). An archive only runs on that
+ * engine: when the release has none for the installed engine, the installer is
+ * needed.
  */
 
 const crypto = require('crypto');
@@ -38,9 +38,9 @@ function isNewer(candidate, current) {
 const assetOf = (a) => ({ name: a.name, url: a.url, size: a.size, digest: a.digest || null });
 
 /**
- * Choisit la mise a jour parmi les releases (format de l'API GitHub).
- * @returns {?{version, kind: 'asar'|'installer', asset}} la plus recente
- *   release plus recente que `currentVersion`, ou null.
+ * Picks the update among the releases (GitHub API format).
+ * @returns {?{version, kind: 'asar'|'installer', asset}} the latest release
+ *   newer than `currentVersion`, or null.
  */
 function pickUpdate(releases, currentVersion, electronMajor) {
   let best = null;
@@ -67,9 +67,9 @@ async function findUpdate(currentVersion, electronMajor, token) {
 }
 
 /**
- * Leve une erreur si `buf` ne correspond pas a l'empreinte publiee par GitHub
- * ("sha256:<hex>"). GitHub ne la publie que quelques instants apres le depot
- * du fichier : sans elle, on refuse plutot que d'installer sans controle.
+ * Throws when `buf` does not match the digest published by GitHub
+ * ("sha256:<hex>"). GitHub only publishes it a moment after the upload: without
+ * it, refuse rather than install unchecked.
  */
 function checkDigest(buf, digest) {
   const [algo, expected] = (digest || '').split(':');
@@ -80,7 +80,7 @@ function checkDigest(buf, digest) {
   if (actual !== expected) throw new Error('Fichier de mise à jour corrompu (empreinte SHA-256 différente)');
 }
 
-/** Telecharge un fichier de release dans `dest`, apres controle de taille et d'empreinte. */
+/** Downloads a release file to `dest`, after checking its size and digest. */
 async function downloadAsset(asset, token, dest) {
   const res = await fetch(asset.url, {
     headers: authHeaders('application/octet-stream', token),

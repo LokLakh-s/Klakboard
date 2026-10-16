@@ -1,26 +1,26 @@
 /**
- * Sources de marche, toutes gratuites et sans cle API.
- * Tout part du main process : Yahoo n'envoie aucun header CORS.
+ * Market sources, all free and keyless. Everything runs in the main process:
+ * Yahoo sends no CORS header.
  *
- *   crypto  spot+var : Binance  /ticker/24hr   (1 appel pour toutes les paires,
- *                      paire par paire si l'une d'elles est refusee)
- *   crypto  courbe   : Binance  /klines
- *   metaux  spot     : gold-api.com           (vrai spot, pas le future)
- *   metaux  var      : Yahoo spark GC=F...    (1 appel groupe avec le forex)
- *   metaux  courbe   : Yahoo chart, renormalisee sur le spot (prime future ~1 %)
- *   forex   spot+var : Yahoo spark EURUSD=X...
- *   forex   courbe   : Yahoo chart
+ *   crypto  quote+chg : Binance  /ticker/24hr   (one call for all pairs, then
+ *                       pair by pair if one of them is rejected)
+ *   crypto  chart     : Binance  /klines
+ *   metals  quote     : gold-api.com           (real spot, not the future)
+ *   metals  chg       : Yahoo spark GC=F...    (one call shared with forex)
+ *   metals  chart     : Yahoo chart, rescaled to the spot (~1 % future premium)
+ *   forex   quote+chg : Yahoo spark EURUSD=X...
+ *   forex   chart     : Yahoo chart
  */
 
 const { version } = require('./package.json');
 
-const UA = `Klakboard/${version}`; // Yahoo bloque curl/python, pas les UA custom
+const UA = `Klakboard/${version}`; // Yahoo blocks curl/python, not custom user agents
 const YQ = 'https://query1.finance.yahoo.com';
-// Domaine des seules donnees de marche publiques : contrairement a api.binance.com,
-// il n'est pas bloque dans les pays ou Binance n'opere pas.
+// Public market data only: unlike api.binance.com, this domain is not blocked
+// in countries where Binance does not operate.
 const BINANCE = 'https://data-api.binance.vision/api/v3';
 
-/* ---------------- catalogue metaux ---------------- */
+/* ---------------- metals catalog ---------------- */
 
 const METALS = {
   XAU: { label: 'Or', yahoo: 'GC=F' },
@@ -35,10 +35,10 @@ const keyOf = (it) =>
   : it.kind === 'metal' ? `metal:${it.code}`
   : `fx:${it.from}${it.to}`;
 
-/* ---------------- utilitaires ---------------- */
+/* ---------------- helpers ---------------- */
 
-// Sans delai maximum, une requete qui ne repond jamais bloquait le cycle de
-// rafraichissement indefiniment.
+// Without a timeout, a request that never answers would block the refresh
+// cycle forever.
 const TIMEOUT_MS = 10000;
 
 async function getJson(url, opts = {}) {
@@ -65,7 +65,7 @@ async function getJson(url, opts = {}) {
 const yahooSymbolOf = (it) =>
   it.kind === 'metal' ? METALS[it.code]?.yahoo : `${it.from}${it.to}=X`;
 
-/** Zippe timestamps/closes en filtrant les null (Yahoo en renvoie regulierement). */
+/** Zips timestamps/closes, dropping nulls (Yahoo returns some regularly). */
 function zipYahoo(result) {
   const ts = result.timestamp || [];
   const cl = result.indicators?.quote?.[0]?.close || [];
@@ -76,7 +76,7 @@ function zipYahoo(result) {
   return pts;
 }
 
-/* ---------------- spot + variation 24 h ---------------- */
+/* ---------------- quote + 24 h change ---------------- */
 
 async function fetchCrypto(items, out, errors) {
   if (!items.length) return;
@@ -85,8 +85,8 @@ async function fetchCrypto(items, out, errors) {
   try {
     data = await getJson(`${BINANCE}/ticker/24hr?symbols=${encodeURIComponent(symbols)}`);
   } catch (err) {
-    // Une seule paire inconnue (retiree de la cote) fait refuser tout le lot
-    // (HTTP 400) : on repasse paire par paire pour que les autres restent a jour.
+    // A single unknown pair (delisted) makes Binance reject the whole batch
+    // (HTTP 400): retry pair by pair so the other pairs stay up to date.
     if (err.status !== 400 || items.length === 1) throw err;
     data = [];
     await Promise.all(items.map(async (it) => {
@@ -106,7 +106,7 @@ async function fetchCrypto(items, out, errors) {
   }
 }
 
-/** Un seul appel spark couvre metaux ET devises. */
+/** One spark call covers metals AND currencies. */
 async function fetchYahooSpark(items, out) {
   if (!items.length) return;
   const symbols = items.map(yahooSymbolOf).filter(Boolean);
@@ -130,8 +130,8 @@ async function fetchYahooSpark(items, out) {
 }
 
 /**
- * Yahoo cote le FUTURE (GC=F a ~+1 % sur le spot). On garde sa variation 24 h
- * mais on remplace le prix par le vrai spot gold-api.
+ * Yahoo quotes the FUTURE (GC=F ~1 % above spot): its 24 h change is kept but
+ * the price is replaced by the gold-api spot.
  */
 async function overlayMetalSpot(items, out, errors) {
   await Promise.all(
@@ -143,7 +143,7 @@ async function overlayMetalSpot(items, out, errors) {
           out[k] = { ...(out[k] || { change24h: null }), price: d.price };
         }
       } catch (err) {
-        // Le prix future de Yahoo reste affiche en repli (~1 % au-dessus du spot).
+        // Yahoo's future price stays on screen as a fallback (~1 % above spot).
         errors.push(`gold-api (${it.code}) : ${err.message}`);
       }
     })
@@ -151,8 +151,8 @@ async function overlayMetalSpot(items, out, errors) {
 }
 
 /**
- * Renvoie { quotes, errors } : une source en panne n'empeche pas les autres de
- * repondre, mais son erreur remonte au lieu d'etre avalee.
+ * Returns { quotes, errors }: a failing source does not stop the others, and
+ * its error is reported instead of swallowed.
  */
 async function getQuotes(items) {
   const out = {};
@@ -173,17 +173,16 @@ async function getQuotes(items) {
   return { quotes: out, errors };
 }
 
-/* ---------------- courbes ---------------- */
+/* ---------------- charts ---------------- */
 
 const H = 3600e3;
 const D = 864e5;
 
 /**
- * Periodes proposees. Binance accepte un interval + un nombre de bougies, donc
- * la fenetre est exacte. Yahoo n'accepte qu'une liste fermee de `range` : on
- * demande le plus petit qui COUVRE la periode, puis on tronque sur `ms`.
- * Contraintes Yahoo respectees ici : 1m limite aux 7 derniers jours, et tout
- * intervalle infra-journalier limite a 60 jours.
+ * Chart periods. Binance takes an interval and a candle count, so the window is
+ * exact. Yahoo only takes a fixed list of `range` values: request the smallest
+ * one that COVERS the period, then clip to `ms`. Yahoo limits: 1m data only for
+ * the last 7 days, intraday intervals only for the last 60 days.
  */
 const PERIODS = {
   '1h':  { ms: H,        binance: ['1m', 60],   yahoo: ['1d', '1m'] },
@@ -204,12 +203,12 @@ const PERIODS = {
 
 const periodOf = (range) => PERIODS[range] || PERIODS['1w'];
 
-/** Ne garde que ce qui tombe dans la fenetre demandee. */
+/** Keeps the points inside the requested window. */
 function clip(points, ms) {
   const cutoff = Date.now() - ms;
   const kept = points.filter((p) => p[0] >= cutoff);
-  // Une periode plus courte que le pas de cotation (marche ferme le week-end,
-  // par exemple) viderait la courbe : on rend alors les derniers points bruts.
+  // A period shorter than the quote step (market closed over the weekend, for
+  // instance) would empty the chart: return the last raw points instead.
   return kept.length >= 2 ? kept : points.slice(-2);
 }
 
@@ -237,7 +236,8 @@ async function getChart(item, range) {
   const points = await chartYahoo(item, range);
   if (!points.length) return { points };
 
-  // Recale la courbe du future sur le spot reel, sinon l'axe ne colle pas au prix affiche.
+  // Rescales the future curve to the real spot, otherwise the axis does not match
+  // the displayed price.
   if (item.kind === 'metal') {
     try {
       const d = await getJson(`https://api.gold-api.com/price/${item.code}`);
@@ -247,19 +247,19 @@ async function getChart(item, range) {
         return { points: points.map(([t, v]) => [t, v * factor]), rebased: true };
       }
     } catch {
-      /* courbe future brute */
+      /* raw future curve */
     }
   }
   return { points };
 }
 
-/* ---------------- mini-courbes des badges (12 h) ---------------- */
+/* ---------------- badge sparklines (12 h) ---------------- */
 
 const SPARK_MS = 12 * H;
 
 /**
- * Les 12 dernieres heures de COTATION, et non les 12 dernieres heures tout
- * court : marche ferme (week-end), la courbe montre la fin de la derniere seance.
+ * The last 12 hours of TRADING, not the last 12 hours: when the market is
+ * closed (weekend), the curve shows the end of the last session.
  */
 function lastTradingHours(points, ms) {
   if (!points.length) return points;
@@ -267,7 +267,7 @@ function lastTradingHours(points, ms) {
   return points.filter((p) => p[0] >= end - ms);
 }
 
-/** Un seul appel Yahoo pour tous les metaux et devises (5 jours en 15 min, pour couvrir un week-end). */
+/** One Yahoo call for all metals and currencies (5 days at 15 min, to cover a weekend). */
 async function sparkYahoo(items, out) {
   const symbols = [...new Set(items.map(yahooSymbolOf).filter(Boolean))];
   if (!symbols.length) return;
@@ -280,22 +280,22 @@ async function sparkYahoo(items, out) {
   }
 }
 
-/** Binance : un appel par paire, 48 bougies de 15 min. */
+/** Binance: one call per pair, 48 candles of 15 min. */
 async function sparkCrypto(items, out) {
   await Promise.all(items.map(async (it) => {
     try {
       const rows = await getJson(`${BINANCE}/klines?symbol=${encodeURIComponent(it.binance)}&interval=15m&limit=48`);
       out[keyOf(it)] = rows.map((k) => [k[0], parseFloat(k[4])]);
     } catch {
-      /* courbe absente pour cette paire, les autres restent */
+      /* no curve for this pair, the others remain */
     }
   }));
 }
 
 /**
- * Series 12 h par ligne ({ cle: [[t, prix], ...] }). Les metaux restent sur le
- * future Yahoo : la courbe est normalisee a l'affichage, un facteur constant
- * (prime sur le spot) n'en change pas la forme.
+ * 12-hour series per row ({ key: [[t, price], ...] }). Metals stay on the
+ * Yahoo future: curves are normalised when drawn, so a constant factor (premium
+ * over spot) does not change their shape.
  */
 async function getSparks(items) {
   const out = {};
@@ -306,7 +306,7 @@ async function getSparks(items) {
   return out;
 }
 
-/* ---------------- catalogues pour l'ajout ---------------- */
+/* ---------------- catalogs for adding rows ---------------- */
 
 let binanceSymbolsCache = null;
 
@@ -317,7 +317,7 @@ async function listCryptoSymbols() {
   return binanceSymbolsCache;
 }
 
-/** Decoupe BTCUSDT -> base BTC / quote USDT, en testant les quotes connues. */
+/** Splits BTCUSDT into base BTC / quote USDT, trying the known quotes. */
 const QUOTES = ['USDT', 'FDUSD', 'USDC', 'TUSD', 'BUSD', 'EUR', 'TRY', 'BTC', 'ETH', 'BNB'];
 
 async function searchCrypto(query) {
@@ -333,7 +333,7 @@ async function searchCrypto(query) {
     if (!base) continue;
     hits.push({ binance: s, symbol: base, vs: quote });
   }
-  // Les paires en USDT d'abord, puis les bases les plus courtes (BTC avant BTCDOWN).
+  // USDT pairs first, then the shortest bases (BTC before BTCDOWN).
   hits.sort((a, b) => {
     if ((a.vs === 'USDT') !== (b.vs === 'USDT')) return a.vs === 'USDT' ? -1 : 1;
     return a.symbol.length - b.symbol.length || a.symbol.localeCompare(b.symbol);
@@ -347,12 +347,12 @@ const FX_CURRENCIES = [
   'ZAR', 'INR', 'KRW', 'RUB', 'THB', 'ILS',
 ];
 
-// Lettres et chiffres de toute ecriture : Binance cote aussi « 币安人生USDT ».
+// Letters and digits of any script: Binance also lists « 币安人生USDT ».
 const SYMBOL_RE = /^[\p{L}\p{N}]{1,20}$/u;
 
 /**
- * Ligne suivie reduite a ses champs connus, ou null si elle est invalide. Les
- * lignes arrivent de la page : elles finissent dans la config et dans des URL.
+ * Tracked row reduced to its known fields, or null when invalid. Rows come
+ * from the page and end up in the config and in URLs.
  */
 function normalizeItem(it) {
   if (!it || typeof it !== 'object') return null;

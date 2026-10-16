@@ -1,18 +1,18 @@
 /**
- * Choix de l'ecran du tableau de bord. Aucune dependance a Electron : les
- * ecrans sont passes en argument (forme de screen.getAllDisplays()).
+ * Picks the dashboard screen. No Electron dependency: screens are passed as
+ * arguments (shape of screen.getAllDisplays()).
  */
 
 /**
- * Ecran a recouvrir : celui retenu dans les reglages, retrouve par son id ou a
- * defaut par sa resolution (l'id peut changer quand l'ecran change de port).
- * Sans choix enregistre, le petit ecran secondaire : 960 x 640, sinon le plus
- * petit des ecrans secondaires <= 1100 x 800. null si aucun ne convient : on ne
- * recouvre jamais l'ecran principal sans qu'il ait ete choisi.
+ * Screen to cover: the one saved in the settings, found by id or else by
+ * resolution (the id may change when the screen moves to another port).
+ * Without a saved choice, the small secondary screen: 960 x 640, or else the
+ * smallest secondary screen up to 1100 x 800. null when none fits: the primary
+ * screen is never covered unless it was picked.
  *
- * @param {Array} displays        ecrans connectes
- * @param {number} primaryId      id de l'ecran principal
- * @param {?{id, width, height}} remembered  ecran choisi dans les reglages
+ * @param {Array} displays        connected screens
+ * @param {number} primaryId      id of the primary screen
+ * @param {?{id, width, height}} remembered  screen picked in the settings
  */
 function findTargetDisplay(displays, primaryId, remembered) {
   if (remembered) {
@@ -29,12 +29,12 @@ function findTargetDisplay(displays, primaryId, remembered) {
   return small[0] || null;
 }
 
-/** Ce qu'on retient d'un ecran pour le retrouver au prochain demarrage. */
+/** What is kept of a screen to find it again at the next launch. */
 function displayKey(d) {
   return { id: d.id, width: d.bounds.width, height: d.bounds.height };
 }
 
-/** Vrai si le rectangle `b` recoupe au moins un ecran : sinon la fenetre serait hors champ. */
+/** True when rectangle `b` overlaps at least one screen: otherwise the window would be off-screen. */
 function isOnScreen(displays, b) {
   return displays.some(({ bounds: d }) =>
     b.x < d.x + d.width && b.x + b.width > d.x && b.y < d.y + d.height && b.y + b.height > d.y);

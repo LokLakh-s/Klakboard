@@ -1,10 +1,11 @@
 /**
- * Token GitHub des mises a jour (le depot est prive).
+ * GitHub token for updates. Only needed while the repository was private: kept
+ * for installations that still have one.
  *
- * Il se depose en clair dans github-token.txt ; a la premiere lecture il est
- * chiffre pour la session Windows (DPAPI, via safeStorage d'Electron) dans
- * github-token.bin, et le fichier en clair est supprime. Redeposer un .txt
- * remplace le token.
+ * It is dropped in plain text in github-token.txt; on first read it is encrypted
+ * for the user session (DPAPI on Windows, through Electron's safeStorage) into
+ * github-token.bin, and the plain file is deleted. Dropping a new .txt replaces
+ * the token.
  */
 
 const fs = require('fs');
@@ -14,9 +15,9 @@ const PLAIN = 'github-token.txt';
 const SEALED = 'github-token.bin';
 
 /**
- * @param {string} dir dossier des donnees de l'appli
+ * @param {string} dir app data folder
  * @param {{isEncryptionAvailable, encryptString, decryptString}} safeStorage
- * @returns {?string} le token, ou null
+ * @returns {?string} the token, or null
  */
 function readToken(dir, safeStorage) {
   const canSeal = safeStorage.isEncryptionAvailable();
@@ -24,7 +25,7 @@ function readToken(dir, safeStorage) {
   try {
     plain = fs.readFileSync(path.join(dir, PLAIN), 'utf8').trim();
   } catch {
-    /* pas de token en clair : on lit la version chiffree */
+    /* no plain token: read the encrypted one */
   }
   if (plain) {
     if (canSeal) {
@@ -32,7 +33,7 @@ function readToken(dir, safeStorage) {
         fs.writeFileSync(path.join(dir, SEALED), safeStorage.encryptString(plain));
         fs.unlinkSync(path.join(dir, PLAIN));
       } catch {
-        /* chiffrement impossible cette fois : le token reste utilisable en clair */
+        /* encryption failed this time: the plain token stays usable */
       }
     }
     return plain;

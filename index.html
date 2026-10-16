@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <!-- Rien d'exterieur ni de script inline : un texte venu d'une API ne peut pas s'executer. -->
+  <!-- Nothing external and no inline script: text from an API cannot run. -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'" />
   <title>Klakboard</title>
@@ -11,7 +11,7 @@
 <body>
   <div class="app">
 
-    <!-- ================= colonne marches ================= -->
+    <!-- ================= markets column ================= -->
     <section class="markets">
       <header class="topBar">
         <div class="dateBlock">
@@ -48,7 +48,7 @@
       </section>
     </section>
 
-    <!-- ================= colonne systeme ================= -->
+    <!-- ================= system column ================= -->
     <section class="sys">
 
       <div class="card grow">
@@ -91,7 +91,7 @@
     </section>
   </div>
 
-  <!-- ================= overlay courbe ================= -->
+  <!-- ================= chart overlay ================= -->
   <div class="ov" id="chartOv" hidden>
     <div class="ovBox chartBox">
       <div class="ovHead">
@@ -121,7 +121,7 @@
     </div>
   </div>
 
-  <!-- ================= overlay ajout ================= -->
+  <!-- ================= add overlay ================= -->
   <div class="ov" id="addOv" hidden>
     <div class="ovBox">
       <div class="ovHead">
@@ -154,7 +154,7 @@
     </div>
   </div>
 
-  <!-- ================= overlay reglages ================= -->
+  <!-- ================= settings overlay ================= -->
   <div class="ov" id="setOv" hidden>
     <div class="ovBox">
       <div class="ovHead">
@@ -232,7 +232,7 @@
     </div>
   </div>
 
-  <!-- Voile du mode nuit : sous les panneaux, qui restent lisibles. -->
+  <!-- Night mode veil: below the panels, which stay readable. -->
   <div class="nightVeil" id="nightVeil"></div>
 
   <script src="renderer.js"></script>

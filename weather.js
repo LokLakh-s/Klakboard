@@ -1,11 +1,11 @@
 /**
- * Meteo du jour, sans cle API.
+ * Today's weather, keyless.
  *
- *   previsions : Open-Meteo  /v1/forecast  (modele ECMWF/ICON, horaire + CAPE)
- *   villes     : Open-Meteo  /v1/search    (geocodage)
- *   carte      : Windy, ouverte dans le navigateur (radar, vent, temperature)
+ *   forecast : Open-Meteo  /v1/forecast  (ECMWF/ICON models, hourly + CAPE)
+ *   cities   : Open-Meteo  /v1/search    (geocoding)
+ *   map      : Windy, opened in the browser (radar, wind, temperature)
  *
- * CAPE = energie convective disponible : indicateur du risque d'orage.
+ * CAPE = convective available potential energy: a thunderstorm risk indicator.
  */
 
 const OPEN_METEO = 'https://api.open-meteo.com/v1/forecast';
@@ -32,7 +32,7 @@ function stormLevel(cape) {
   return 'fort';
 }
 
-/** Nom de l'icone Meteocons (icons/weather/<nom>.svg) pour un code WMO. */
+/** Meteocons icon name (icons/weather/<name>.svg) for a WMO code. */
 function iconName(code, isDay) {
   const dn = isDay ? 'day' : 'night';
   if (code === 0) return `clear-${dn}`;
@@ -71,7 +71,7 @@ async function getWeather(site) {
   if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
   const d = await res.json();
 
-  // Risque d'orage : pic de CAPE sur les 12 prochaines heures.
+  // Thunderstorm risk: highest CAPE over the next 12 hours.
   const now = d.current.time;
   const upcoming = d.hourly.time
     .map((t, i) => ({ t, cape: d.hourly.cape[i] }))
@@ -79,7 +79,7 @@ async function getWeather(site) {
     .slice(0, 12);
   const capeMax = Math.max(0, ...upcoming.map((h) => h.cape ?? 0));
 
-  // Heures locales de la ville, sans decalage : converties en instants absolus.
+  // City local times without offset: converted to absolute instants.
   const toMs = (local) => (local ? Date.parse(`${local}:00Z`) - d.utc_offset_seconds * 1000 : NaN);
 
   return {
@@ -97,15 +97,15 @@ async function getWeather(site) {
     windDir: windDir(d.current.wind_direction_10m),
     windMax: Math.round(d.daily.wind_speed_10m_max[0]),
     storm: stormLevel(capeMax),
-    // Lever et coucher du jour et du lendemain (absents en nuit ou jour polaire).
+    // Sunrise and sunset of today and tomorrow (missing during polar night or day).
     sun: d.daily.sunrise.map((rise, i) => ({ rise: toMs(rise), set: toMs(d.daily.sunset[i]) })),
     updatedAt: Date.now(),
   };
 }
 
 /**
- * Libelle court d'une ville : departement en France (« Paris (75) », trois
- * chiffres outre-mer), code pays ailleurs (« Paris (US) »).
+ * Short city label: department in France (« Paris (75) », three digits
+ * overseas), country code elsewhere (« Paris (US) »).
  */
 function placeLabel(r) {
   const postcode = (r.postcodes || [])[0];
@@ -115,7 +115,7 @@ function placeLabel(r) {
   return r.country_code ? `${r.name} (${r.country_code})` : r.name;
 }
 
-/** Villes correspondant a `query`, avec de quoi les distinguer (departement, pays). */
+/** Cities matching `query`, with what tells them apart (department, country). */
 async function searchPlaces(query) {
   const params = new URLSearchParams({ name: query, count: '8', language: 'fr', format: 'json' });
   const res = await fetch(`${GEOCODING}?${params}`, { signal: AbortSignal.timeout(10000) });
@@ -131,12 +131,12 @@ async function searchPlaces(query) {
 }
 
 /**
- * Nuit en cours ou a venir, du coucher au lever du soleil : { on, from, until }
- * (instants en ms ; from vaut null avant le lever, le coucher de la veille
- * n'etant pas connu). null sans heures de soleil (meteo indisponible, nuit ou
- * jour polaire). `sun[0]` est la journee en cours dans le fuseau de la ville ;
- * apres minuit, tant que la meteo n'est pas rafraichie, c'est encore la veille :
- * on est alors apres son coucher, donc bien la nuit.
+ * Current or next night, from sunset to sunrise: { on, from, until } (instants
+ * in ms; from is null before sunrise, the previous sunset being unknown). null
+ * without sun times (weather unavailable, polar night or day). `sun[0]` is the
+ * current day in the city's time zone; after midnight, until the weather is
+ * refreshed, it is still the previous day: we are then after its sunset, so it
+ * is indeed night.
  */
 function nightWindow(now, sun) {
   const [today, tomorrow] = sun || [];

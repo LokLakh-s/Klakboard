@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 
-/** Element avec texte : les donnees venues d'une API ou de l'OS ne passent jamais par innerHTML. */
+/** Element with text: data from an API or the OS never goes through innerHTML. */
 function el(tag, className, text) {
   const e = document.createElement(tag);
   if (className) e.className = className;
@@ -27,7 +27,7 @@ const labelOf = (it) =>
   : it.kind === 'fx' ? `${it.from}/${it.to}`
   : `${it.symbol}/${it.vs}`;
 
-/* ---------------- formatage ---------------- */
+/* ---------------- formatting ---------------- */
 
 function fmtPrice(v) {
   if (v == null) return '--';
@@ -60,7 +60,7 @@ function fmtRate(bytesPerSec) {
   return [b.toFixed(0), 'B/s'];
 }
 
-/* ---------------- tableau des marches ---------------- */
+/* ---------------- market badges ---------------- */
 
 function renderMarkets() {
   const wrap = $('mScroll');
@@ -72,8 +72,8 @@ function renderMarkets() {
     return;
   }
 
-  // Une seule grille, sans en-tetes de categorie : le tri suffit a regrouper
-  // et chaque badge porte deja sa cotation (Or, USD, USDT).
+  // One grid without category headers: sorting groups the rows, and each badge
+  // already shows its quote currency (Gold, USD, USDT).
   const grid = document.createElement('div');
   grid.className = 'badges';
   const sorted = [...config.items].sort(
@@ -104,8 +104,8 @@ function makeBadge(it) {
   const b = document.createElement('div');
   b.className = 'badge';
 
-  // Un metal est toujours cote en USD : afficher "USD" n'apprendrait rien,
-  // on met son nom francais a la place ("XAU  Or").
+  // A metal is always quoted in USD: "USD" would tell nothing, so its name is
+  // shown instead ("XAU  Gold").
   const sym = it.kind === 'metal' ? it.code : it.kind === 'fx' ? it.from : it.symbol;
   const vs =
     it.kind === 'metal' ? (catalogs.metals[it.code]?.label || 'USD')
@@ -135,9 +135,9 @@ function makeBadge(it) {
 }
 
 /**
- * Mini-courbe 12 h, dans la colonne laissee libre a droite du prix. Trace dans
- * un repere 100 x 100 etire a la taille de la case : pas de retrace au
- * redimensionnement, et la couleur suit le theme via currentColor.
+ * 12-hour sparkline, in the column left free next to the price. Drawn in a
+ * 100 x 100 frame stretched to the cell: no redraw on resize, and the colour
+ * follows the theme through currentColor.
  */
 function drawSpark(box, points) {
   if (!points || points.length < 2) {
@@ -166,7 +166,7 @@ function applySparks(sparks) {
   for (const [key, cell] of rowCells) drawSpark(cell.spark, sparks[key]);
 }
 
-// Une serie absente (source en panne) laisse la courbe precedente en place.
+// A missing series (failing source) keeps the previous curve.
 window.dash.onSparks((sparks) => {
   Object.assign(lastSparks, sparks);
   applySparks(lastSparks);
@@ -181,7 +181,7 @@ function applyQuotes(quotes) {
     const q = quotes[key];
     if (!q) continue;
 
-    // Cours garde d'un cycle precedent faute de reponse : grise, heure en infobulle.
+    // Price kept from a previous cycle for lack of answer: greyed out, time in the tooltip.
     const stale = q.at != null && now - q.at > staleMs;
     cell.badge.classList.toggle('stale', stale);
     cell.badge.title = stale ? `Dernière cotation à ${new Date(q.at).toLocaleTimeString('fr-FR')}` : '';
@@ -200,7 +200,7 @@ function applyQuotes(quotes) {
     cell.chg.classList.toggle('up', q.change24h > 0);
     cell.chg.classList.toggle('down', q.change24h < 0);
 
-    // Le badge entier se teinte : la tendance se lit sans chercher le chiffre.
+    // The whole badge is tinted: the trend reads without looking for the figure.
     if (cell.badge) {
       cell.badge.classList.toggle('up', q.change24h > 0);
       cell.badge.classList.toggle('down', q.change24h < 0);
@@ -208,8 +208,8 @@ function applyQuotes(quotes) {
   }
 }
 
-/* Pastille : verte si toutes les sources ont repondu, rouge sinon ; le detail
-   (source, erreur, heure) est dans son infobulle. */
+/* Status dot: green when every source answered, red otherwise; details
+   (source, error, time) in its tooltip. */
 window.dash.onQuotes((d) => {
   staleMs = d.staleMs || staleMs;
   lastQuotes = d.quotes;
@@ -225,7 +225,7 @@ window.dash.onQuotes((d) => {
   }
 });
 
-/* ---------------- horloge ---------------- */
+/* ---------------- clock ---------------- */
 
 function tickClock() {
   const d = new Date();
@@ -236,7 +236,7 @@ function tickClock() {
 tickClock();
 setInterval(tickClock, 1000);
 
-/* ---------------- panneau systeme ---------------- */
+/* ---------------- system panel ---------------- */
 
 let coreEls = [];
 
@@ -255,15 +255,15 @@ function buildCores(n) {
   }
 }
 
-/** Vert -> ambre -> rouge : la couleur porte l'info autant que la hauteur. */
+/** Green -> amber -> red: the colour carries as much as the height. */
 function loadColor(pct) {
   if (pct >= 85) return 'var(--down)';
   if (pct >= 55) return 'var(--warn)';
   return 'var(--up)';
 }
 
-/* Couleurs du theme lues une fois et memorisees : getComputedStyle a chaque
-   trace de sparkline (1x/s) provoquerait un recalcul de style inutile. */
+/* Theme colours read once and cached: getComputedStyle on every sparkline
+   draw (once a second) would force a useless style recalculation. */
 let themeColors = null;
 function palette() {
   if (!themeColors) {
@@ -277,9 +277,8 @@ function palette() {
 window.dash.onSys((s) => {
   // CPU
   if (coreEls.length !== s.cpu.per.length) buildCores(s.cpu.per.length);
-  // La couleur n'est reecrite que lorsqu'elle change vraiment de palier :
-  // 32 affectations de `background` par seconde declenchaient un recalcul de
-  // style pour rien.
+  // The colour is only written when it changes band: 32 `background` writes per
+  // second would force style recalculations for nothing.
   s.cpu.per.forEach((v, i) => {
     const el = coreEls[i];
     if (!el) return;
@@ -292,7 +291,7 @@ window.dash.onSys((s) => {
   });
   $('cpuAvg').textContent = `${s.cpu.avg.toFixed(0)}%`;
   // "Intel(R) Core(TM) i9-14900KF" -> "i9-14900KF", "AMD Ryzen 9 7950X 16-Core
-  // Processor" -> "Ryzen 9 7950X" : a 24 px la marque deborde.
+  // Processor" -> "Ryzen 9 7950X": at 24 px the brand overflows.
   $('cpuModel').textContent = (s.cpuModel || '')
     .replace(/\b\d+-Core\b|\(R\)|\(TM\)|CPU|Processor|Intel|AMD|Core/gi, '')
     .replace(/\s+/g, ' ')
@@ -305,8 +304,8 @@ window.dash.onSys((s) => {
   const rb = $('ramBar');
   rb.style.width = `${r.pct}%`;
   rb.style.background = loadColor(r.pct);
-  // "19.4 / 68.5 GB" et non "19.37 GB / 68.46 GB" : a 24 px la version longue
-  // mesure 355 px pour 367 disponibles, et la 2e decimale n'apprend rien.
+  // "19.4 / 68.5 GB" rather than "19.37 GB / 68.46 GB": at 24 px the long form
+  // takes 355 of 367 available px, and the 2nd decimal tells nothing.
   const g = (b) => (b / 1e9).toFixed(1);
   $('ramUsed').textContent = `${g(r.used)} / ${g(r.total)} GB`;
   $('ramFree').textContent = `${g(r.free)} GB libres`;
@@ -333,8 +332,8 @@ window.dash.onSys((s) => {
     $('gpuFanTemp').textContent = '';
   }
 
-  // Reseau
-  // rate vaut null quand les compteurs ne remontent plus : "--" plutot qu'un debit fige.
+  // Network
+  // `rate` is null when the counters stop coming: "--" rather than a frozen rate.
   const rate = s.net.rate || { down: null, up: null };
   const [dv, du] = fmtRate(rate.down);
   const [uv2, uu2] = fmtRate(rate.up);
@@ -350,9 +349,9 @@ window.dash.onSys((s) => {
   pushNetHistory(rate.down ?? 0, rate.up ?? 0);
 });
 
-/* ---------------- historique de debit ---------------- */
+/* ---------------- throughput history ---------------- */
 
-const NET_HIST = 90;              // 90 s d'historique
+const NET_HIST = 90;              // 90 s of history
 const netHist = { down: [], up: [] };
 
 function pushNetHistory(down, up) {
@@ -362,9 +361,8 @@ function pushNetHistory(down, up) {
   drawNetSpark();
 }
 
-/* Le SVG est construit UNE fois puis seuls les attributs `points` changent :
-   reconstruire l'arbre via innerHTML chaque seconde forcait un reparse HTML
-   et une nouvelle mise en page a chaque tick. */
+/* The SVG is built ONCE, then only the `points` attributes change: rebuilding
+   it through innerHTML every second would reparse HTML and relayout each tick. */
 let spark = null;
 
 function buildSpark(W, H) {
@@ -394,8 +392,8 @@ function drawNetSpark() {
   if (!W || !H || netHist.down.length < 2) return;
   if (!spark || spark.W !== W || spark.H !== H) buildSpark(W, H);
 
-  // Echelle commune aux deux courbes, sinon on ne peut pas les comparer d'un
-  // coup d'oeil. Plancher a 64 ko/s pour que le bruit de fond reste plat.
+  // One scale for both curves, so they compare at a glance. Floor at 64 kB/s so
+  // that background noise stays flat.
   let peak = 64000;
   for (let i = 0; i < netHist.down.length; i++) {
     if (netHist.down[i] > peak) peak = netHist.down[i];
@@ -415,12 +413,12 @@ function drawNetSpark() {
   spark.label.textContent = `pic ${pv} ${pu}`;
 }
 
-/* ---------------- courbe ---------------- */
+/* ---------------- chart ---------------- */
 
 let chartItem = null;
 let chartRange = '1w';
-// Numero de la derniere demande : une reponse plus lente d'une periode
-// precedente ne doit pas remplacer la courbe affichee.
+// Number of the latest request: a slower answer for a previous period must not
+// replace the chart on screen.
 let chartReq = 0;
 
 function drawChart(points, up) {
@@ -433,8 +431,8 @@ function drawChart(points, up) {
 
   const W = area.clientWidth || 600;
   const H = area.clientHeight || 240;
-  // Les libelles d'axe sont a AXIS_FS px : la gouttiere droite doit suivre,
-  // sinon un prix a 5 chiffres deborde du cadre.
+  // Axis labels are AXIS_FS px: the right gutter must follow, otherwise a 5-digit
+  // price overflows.
   const AXIS_FS = 23;
   const pad = { l: 4, r: 132, t: 14, b: 22 };
 
@@ -538,14 +536,14 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') document.querySelectorAll('.ov').forEach(close);
 });
 
-/* ---------------- panneaux (menu de la zone de notifications) ---------------- */
+/* ---------------- panels (tray menu) ---------------- */
 
 async function openSettings() {
   syncSettings();
   buildDisplayList();
   $('setOv').hidden = false;
-  // Relu depuis l'OS a chaque ouverture : l'entree a pu etre desactivee
-  // entre-temps depuis le Gestionnaire des taches.
+  // Read from the OS at each opening: the entry may have been disabled from Task
+  // Manager in the meantime.
   $('autoTgl').checked = await window.dash.getAutoLaunch();
 }
 
@@ -560,7 +558,7 @@ $('purgeBtn').addEventListener('click', async () => {
   await window.dash.resetNetTotals();
 });
 
-/* ---------------- reglages ---------------- */
+/* ---------------- settings ---------------- */
 
 function syncSettings() {
   document.querySelectorAll('#intervals .chip').forEach((c) =>
@@ -589,15 +587,15 @@ $('themes').addEventListener('click', async (e) => {
   const b = e.target.closest('.chip');
   if (!b) return;
   document.documentElement.dataset.theme = b.dataset.theme;
-  themeColors = null;   // la palette memorisee n'est plus valable
-  spark = null;         // le SVG porte les anciennes couleurs en dur
+  themeColors = null;   // the cached palette is no longer valid
+  spark = null;         // the SVG has the old colours hard-coded
   config = await window.dash.setTheme(b.dataset.theme);
   syncSettings();
   drawNetSpark();
   if (!$('chartOv').hidden) loadChart();
 });
 
-/** Liste des ecrans detectes, avec projection plein ecran au clic. */
+/** Detected screens; a click shows the dashboard full screen on it. */
 async function buildDisplayList() {
   const list = $('dispList');
   const displays = await window.dash.getDisplays();
@@ -632,7 +630,7 @@ $('zooms').addEventListener('click', async (e) => {
   if (!b) return;
   config = await window.dash.setZoom(Number(b.dataset.z));
   syncSettings();
-  // Le zoom change la taille du viewport : les SVG doivent etre retraces.
+  // Zoom changes the viewport size: the SVGs must be redrawn.
   drawNetSpark();
   if (!$('chartOv').hidden) loadChart();
 });
@@ -649,12 +647,12 @@ $('coverTgl').addEventListener('change', async (e) => {
 });
 
 $('autoTgl').addEventListener('change', async (e) => {
-  // On repositionne la case sur l'etat reellement applique : si Windows refuse
-  // l'ecriture dans le registre, la case ne doit pas rester cochee a tort.
+  // Set the box back to the state actually applied: if Windows refuses the
+  // registry write, it must not stay checked.
   e.target.checked = await window.dash.setAutoLaunch(e.target.checked);
 });
 
-/* ---------------- mode nuit ---------------- */
+/* ---------------- night mode ---------------- */
 
 const hhmm = (ms) => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
@@ -680,7 +678,7 @@ $('nightDims').addEventListener('click', async (e) => {
   syncSettings();
 });
 
-/* ---------------- ville meteo ---------------- */
+/* ---------------- weather city ---------------- */
 
 let siteTimer;
 $('siteSearch').addEventListener('input', (e) => {
@@ -706,7 +704,7 @@ $('siteSearch').addEventListener('input', (e) => {
   }, 350);
 });
 
-/* ---------------- ajout de lignes ---------------- */
+/* ---------------- adding rows ---------------- */
 
 $('addTabs').addEventListener('click', (e) => {
   const b = e.target.closest('.chip');
@@ -770,7 +768,7 @@ $('cSearch').addEventListener('input', (e) => {
   }, 280);
 });
 
-/* ---------------- demarrage ---------------- */
+/* ---------------- startup ---------------- */
 
 (async function init() {
   config = await window.dash.getConfig();
@@ -793,14 +791,14 @@ window.addEventListener('resize', () => {
   if (!$('chartOv').hidden) loadChart();
 });
 
-/* ---------------- meteo ---------------- */
+/* ---------------- weather ---------------- */
 
 const STORM_CLASS = { faible: '', possible: 'warn', fort: 'alert' };
 
-// Vrai tant qu'aucune ville meteo n'a ete choisie (premier lancement).
+// True until a weather city is picked (first launch).
 let needsSite = false;
 
-/** Carte meteo sans ville : elle invite a en choisir une. */
+/** Weather card without a city: invites the user to pick one. */
 function renderNoSite() {
   $('wIcon').hidden = true;
   $('wSite').textContent = '--';

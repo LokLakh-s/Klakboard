@@ -4,10 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const { loadMain, makeDisplay, sleep } = require('./electron-mock');
 
-// Ecran principal 2560 x 1440 et petit ecran 960 x 640 a sa droite.
+// Primary screen 2560 x 1440 and small 960 x 640 screen on its right.
 const primary = () => makeDisplay(1, 0, 0, 2560, 1440);
 const small = () => makeDisplay(2, 2560, 0, 960, 640);
-const DEBOUNCE = 600; // > delai de onDisplaysChanged
+const DEBOUNCE = 600; // > onDisplaysChanged delay
 
 test('recouvre le petit ecran au demarrage', async () => {
   const app = await loadMain({ displays: [primary(), small()] });
@@ -31,7 +31,7 @@ test('petit ecran debranche : masquee, puis de retour quand il revient', async (
 
 test('masquee par l\'utilisateur : ne reapparait pas au rebranchement', async () => {
   const app = await loadMain({ displays: [primary(), small()] });
-  app.clickTray(); // masquer
+  app.clickTray(); // hide
   app.unplug(2);
   await sleep(DEBOUNCE);
   app.plug(small());

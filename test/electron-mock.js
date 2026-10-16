@@ -1,7 +1,7 @@
 /**
- * Faux module 'electron' pour charger main.js sous Node : fenetre, ecrans et
- * IPC simules, sans interface graphique. loadMain() renvoie de quoi piloter
- * l'appli (brancher un ecran, appeler un handler IPC, cliquer sur l'icone).
+ * Fake 'electron' module to load main.js under Node: window, screens and IPC
+ * are simulated, without any GUI. loadMain() returns a driver for the app (plug
+ * a screen, call an IPC handler, click the tray icon).
  */
 
 const fs = require('fs');
@@ -87,7 +87,7 @@ function createMock({ displays, primaryId, userData }) {
     electron,
     get window() { return window; },
     displays,
-    /** Ajoute ou retire un ecran puis previent l'appli, comme Windows. */
+    /** Adds or removes a screen then notifies the app, like Windows does. */
     plug(d) { displays.push(d); emit(screenEvents, 'display-added', {}, d); },
     unplug(id) {
       const i = displays.findIndex((d) => d.id === id);
@@ -100,8 +100,8 @@ function createMock({ displays, primaryId, userData }) {
 }
 
 /**
- * Charge un main.js neuf (caches vides) avec les ecrans et la config donnes.
- * @returns le pilote du mock, une fois app.whenReady() passe.
+ * Loads a fresh main.js (empty caches) with the given screens and config.
+ * @returns the mock driver, once app.whenReady() has run.
  */
 async function loadMain({ displays, primaryId = displays[0].id, config } = {}) {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'klakboard-test-'));
@@ -115,8 +115,8 @@ async function loadMain({ displays, primaryId = displays[0].id, config } = {}) {
   Module._load = function load(request, ...rest) {
     return request === 'electron' ? mock.electron : originalLoad.call(this, request, ...rest);
   };
-  // Les minuteurs poses au chargement (sauvegarde des cumuls reseau) ne doivent
-  // pas empecher les tests de se terminer.
+  // Timers set at load time (network totals saving) must not keep the tests from
+  // ending.
   const originalSetInterval = global.setInterval;
   global.setInterval = (...args) => originalSetInterval(...args).unref();
   try {
@@ -128,7 +128,7 @@ async function loadMain({ displays, primaryId = displays[0].id, config } = {}) {
     Module._load = originalLoad;
     global.setInterval = originalSetInterval;
   }
-  await new Promise((resolve) => setImmediate(resolve)); // laisse passer whenReady().then()
+  await new Promise((resolve) => setImmediate(resolve)); // let whenReady().then() run
   return mock;
 }
 

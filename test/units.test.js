@@ -28,7 +28,7 @@ test('les periodes de la courbe existent cote marches', () => {
   const { PERIODS } = require('../markets');
   const chips = [...read('index.html').matchAll(/data-range="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(chips, Object.keys(PERIODS));
-  // Periode par defaut a l'ouverture d'une courbe : doit etre l'une des puces.
+  // Default period when a chart opens: must be one of the chips.
   for (const [, range] of read('renderer.js').matchAll(/chartRange = '([^']+)'/g)) {
     assert.ok(chips.includes(range), `periode par defaut inconnue : ${range}`);
   }
@@ -39,7 +39,7 @@ test('tout ce que charge l\'appli est empaquete', () => {
   const packaged = (f) => build.files.includes(f)
     || build.files.some((g) => g.endsWith('/**/*') && f.startsWith(g.slice(0, -4)));
 
-  // Modules locaux requis, de proche en proche depuis main.js.
+  // Local modules required, transitively from main.js.
   const seen = new Set();
   const visit = (file) => {
     if (seen.has(file)) return;
@@ -53,7 +53,7 @@ test('tout ce que charge l\'appli est empaquete', () => {
   for (const [, ref] of read('index.html').matchAll(/(?:src|href)="([\w./-]+)"/g)) seen.add(ref);
 
   for (const f of seen) {
-    if (f === 'package.json') continue; // toujours embarque par electron-builder
+    if (f === 'package.json') continue; // always packaged by electron-builder
     assert.ok(packaged(f), `${f} absent de build.files dans package.json`);
   }
 });
@@ -100,7 +100,7 @@ test('token GitHub : chiffre a la premiere lecture, fichier en clair supprime', 
   const os = require('os');
   const { readToken, PLAIN } = require('../token');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'klakboard-token-'));
-  // Faux chiffrement reversible : seul le cheminement des fichiers est teste.
+  // Fake reversible encryption: only the file handling is tested.
   const safe = {
     isEncryptionAvailable: () => true,
     encryptString: (s) => Buffer.from([...s].reverse().join('')),
@@ -118,7 +118,7 @@ test('token GitHub : chiffre a la premiere lecture, fichier en clair supprime', 
   assert.equal(readToken(dir, safe), 'github_pat_neuf');
   assert.equal(readToken(dir, safe), 'github_pat_neuf');
 
-  // Sans chiffrement disponible, le fichier en clair reste en place et sert tel quel.
+  // Without encryption, the plain file stays and is used as is.
   const noSeal = { isEncryptionAvailable: () => false };
   fs.writeFileSync(path.join(dir, PLAIN), 'github_pat_clair');
   assert.equal(readToken(dir, noSeal), 'github_pat_clair');
@@ -132,14 +132,14 @@ test('mode nuit : du coucher au lever du soleil', () => {
   assert.deepEqual(nightWindow(h(3), sun), { on: true, from: null, until: h(8) });
   assert.deepEqual(nightWindow(h(12), sun), { on: false, from: h(19.5), until: h(32) });
   assert.deepEqual(nightWindow(h(21), sun), { on: true, from: h(19.5), until: h(32) });
-  // Apres minuit, meteo pas encore rafraichie : sun[0] est la veille.
+  // After midnight, weather not refreshed yet: sun[0] is the previous day.
   assert.equal(nightWindow(h(24.5), sun).on, true);
   assert.equal(nightWindow(h(12), null), null);
   assert.equal(nightWindow(h(12), [{ rise: NaN, set: NaN }]), null);
 });
 
 test('tout ce que la page appelle est expose par preload.js', () => {
-  // Une fonction manquante leve une erreur des le chargement : page vide.
+  // A missing function throws at load time: blank page.
   const used = new Set([...read('renderer.js').matchAll(/window\.dash\.(\w+)/g)].map((m) => m[1]));
   const exposed = new Set([...read('preload.js').matchAll(/^\s+(\w+):/gm)].map((m) => m[1]));
   const missing = [...used].filter((f) => !exposed.has(f));

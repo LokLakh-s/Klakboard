@@ -1,28 +1,27 @@
-/* Dashboard sur dalle de 7,5 x 5,3 cm en 960x640, vue a ~60 cm.
+/* Dashboard on a 7.5 x 5.3 cm panel at 960x640, seen from ~60 cm.
  *
- * DENSITE REELLE : 960 px / 75 mm = 12,8 px/mm (~325 PPI, diagonale 3,6").
- * Un texte de 16 px n'y fait que 1,25 mm de haut. Le zoom des reglages
- * (100 a 175 %) agrandit tout d'un bloc pour qui le veut plus gros.
+ * REAL DENSITY: 960 px / 75 mm = 12.8 px/mm (~325 PPI, 3.6" diagonal).
+ * 16 px text is only 1.25 mm high there. The zoom setting (100 to 175 %)
+ * scales everything at once for those who want it bigger.
  *
- * Le contraste compte autant que la taille a cette echelle : les gris sont
- * remontes de #7c89a1 (4,9:1) a #aab6c9 (~9:1 sur le fond des cartes).
+ * Contrast matters as much as size at this scale: greys were raised from
+ * #7c89a1 (4.9:1) to #aab6c9 (~9:1 on the card background).
  *
- * Base 1rem = 16 px (taille par defaut, fixee par html, body plus bas).
- * Tailles a 100 % :
- *   1.15rem = 18,4 px  plus petit texte (unites, indications)
- *   1.20rem = 19,2 px  pieds de carte, vram
- *   1.30rem = 20,8 px  en-tetes de carte (CPU, RAM, GPU, RESEAU)
- *   1.50rem = 24 px    symboles des badges
- *   1.65rem = 26,4 px  prix
- *   1.70rem = 27,2 px  debits reseau, valeurs meteo
+ * Base 1rem = 16 px (browser default, set by html, body below).
+ * Sizes at 100 %:
+ *   1.15rem = 18.4 px  smallest text (units, hints)
+ *   1.20rem = 19.2 px  card footers, vram
+ *   1.30rem = 20.8 px  card headers (CPU, RAM, GPU, NETWORK)
+ *   1.50rem = 24 px    badge symbols
+ *   1.65rem = 26.4 px  prices
+ *   1.70rem = 27.2 px  network rates, weather values
  */
 
 /* ================= themes =================
- * Tous volontairement desatures : sur une dalle a 12,8 px/mm collee aux yeux,
- * une couleur saturee fatigue vite. Les teintes ne colorent que le chassis
- * (fond, cartes, accent) ; --up et --down restent vert/rouge dans tous les
- * themes parce qu'ils portent un SENS, pas une esthetique.
- * Les gris de texte sont recalcules par theme pour rester au-dessus de 7:1.
+ * All deliberately muted: on a 12.8 px/mm panel close to the eyes, saturated
+ * colours tire quickly. Hues only tint the frame (background, cards, accent);
+ * --up and --down stay green/red in every theme because they carry MEANING,
+ * not style. Text greys are tuned per theme to stay above 7:1.
  */
 
 :root, [data-theme="dark"] {
@@ -95,7 +94,7 @@ html, body {
 
 .app { display: flex; height: 100%; }
 
-/* ================= colonne marches ================= */
+/* ================= markets column ================= */
 
 .markets {
   flex: 1 1 auto;
@@ -105,8 +104,8 @@ html, body {
   border-right: 1px solid var(--line);
 }
 
-/* Pas de barre de titre : cette zone (date, heure) reste la seule prise pour
-   deplacer la fenetre sans bordure. */
+/* No title bar: this area (date, time) is the only grip to move the
+   frameless window. */
 .topBar {
   flex: 0 0 auto;
   display: flex;
@@ -146,10 +145,10 @@ html, body {
 
 .mScroll { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 
-/* ---- meteo : remplit l'espace libre sous les badges ----
-   Sa hauteur vient de l'espace restant (container-type: size), pas de son
-   contenu : avec trois rangees de badges ou un zoom pousse, la carte se
-   compacte au lieu de reduire les badges a une zone a faire defiler. */
+/* ---- weather: fills the space left under the badges ----
+   Its height comes from the remaining space (container-type: size), not from
+   its content: with three rows of badges or a high zoom, the card compacts
+   instead of turning the badges into a scrolling area. */
 .weather {
   flex: 1 1 0; min-height: 9rem;
   container-type: size;
@@ -169,10 +168,10 @@ html, body {
 .wPlace { font-size: 1.5rem; font-weight: 700; color: var(--dim); }
 .wOpen { font-size: 1.4rem; color: var(--accent); white-space: nowrap; }
 
-/* Occupe toute la hauteur libre de la carte, contenu centre verticalement. */
+/* Takes the card's free height, content centred vertically. */
 .wMain { flex: 1 1 auto; display: flex; align-items: center; gap: 1.4rem; min-height: 0; }
-/* Le dessin Meteocons n'occupe qu'environ 70 % de sa boite : marges negatives
-   pour que la boite ne gonfle pas la carte. */
+/* The Meteocons drawing only fills ~70 % of its box: negative margins keep
+   the box from inflating the card. */
 .wIcon { flex: 0 0 auto; width: 9rem; height: 9rem; margin: -1.2rem -0.6rem -1.2rem -1rem; }
 .wReading { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; min-width: 0; }
 .wTemp { font-size: 4rem; font-weight: 400; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -188,11 +187,10 @@ html, body {
 .wVal.warn { color: var(--warn); }
 .wVal.alert { color: var(--down); }
 
-/* Paliers compacts, quand la carte n'a plus sa hauteur naturelle (trois
-   rangees de badges, zoom pousse) : icone et temperature reduites et
-   ressenti masque, puis en-tete masque (la carte entiere reste cliquable).
-   Les statistiques suivent la largeur (cqi) pour ne pas se chevaucher
-   au-dela de 115 %. */
+/* Compact steps when the card lacks its natural height (three rows of
+   badges, high zoom): smaller icon and temperature, no feels-like, then no
+   header (the whole card stays clickable). Stats follow the width (cqi) so
+   they do not overlap above 115 %. */
 @container (max-height: 13.5rem) {
   .wIcon { width: 6rem; height: 6rem; margin: -0.8rem -0.4rem -0.8rem -0.7rem; }
   .wTemp { font-size: 2.8rem; }
@@ -205,12 +203,11 @@ html, body {
 
 .emptyHint { padding: 1.4rem 0.8rem; text-align: center; color: var(--faint); font-size: 1.15rem; }
 
-/* ---- badges (metaux, devises, cryptos) ----
-   Toujours trois par ligne. En auto-fill, la 3e colonne ne tenait a 960 px
-   qu'a 5 px pres : la barre de defilement (des qu'une 3e rangee deborde) ou
-   un zoom de 115 % la faisaient tomber. Le texte se reduit donc avec la
-   largeur du badge (unites cqi) au lieu de perdre une colonne ; les plafonds
-   en rem restent les tailles de reference a 960 px et 100 %. */
+/* ---- badges (metals, currencies, crypto) ----
+   Always three per row: with auto-fill the 3rd column only fitted at 960 px
+   by 5 px, and the scrollbar or a 115 % zoom made it drop. Text shrinks with
+   the badge width (cqi units) instead; the rem caps are the reference sizes
+   at 960 px and 100 %. */
 .badges {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -218,8 +215,8 @@ html, body {
   padding: 0.35rem 0.4rem;
 }
 
-/* Texte a gauche ; la mini-courbe 12 h occupe la colonne laissee libre a droite
-   du prix et de la variation (plus large quand le prix est court). */
+/* Text on the left; the 12-hour sparkline takes the column left free next to
+   the price and change (wider when the price is short). */
 .badge {
   container-type: inline-size;
   position: relative;
@@ -240,11 +237,11 @@ html, body {
 .badge:hover .bRm { opacity: 1; }
 .badge.up { border-left-color: var(--up); }
 .badge.down { border-left-color: var(--down); }
-/* Dernier cours connu, source muette depuis plusieurs cycles. */
+/* Last known price, source silent for several cycles. */
 .badge.stale { opacity: .5; }
 
-/* Pas de marge reservee au bouton de retrait : il n'apparait qu'au survol et
-   recouvre alors la fin du libelle ("Palladium" n'aurait pas tenu sinon). */
+/* No room reserved for the remove button: it only shows on hover and then
+   covers the end of the label ("Palladium" would not fit otherwise). */
 .bTop { grid-area: top; display: flex; align-items: baseline; gap: 0.3rem; min-width: 0; }
 .bSym { font-size: min(1.5rem, 15cqi); font-weight: 700; letter-spacing: .2px; }
 .bVs {
@@ -275,7 +272,7 @@ html, body {
 .bChg.up { color: var(--up); background: color-mix(in srgb, var(--up) 16%, transparent); }
 .bChg.down { color: var(--down); background: color-mix(in srgb, var(--down) 16%, transparent); }
 
-/* Le SVG est hors flux : sinon son ratio carre impose sa hauteur au badge. */
+/* The SVG is out of flow: otherwise its square ratio sets the badge height. */
 .bSpark { grid-area: spark; position: relative; min-width: 0; margin: 0.25rem 0 0.15rem; color: var(--faint); }
 .bSpark.up { color: var(--up); }
 .bSpark.down { color: var(--down); }
@@ -291,10 +288,10 @@ html, body {
 }
 .bRm:hover { background: color-mix(in srgb, var(--down) 22%, var(--hover)); color: var(--down); }
 
-/* ================= colonne systeme ================= */
+/* ================= system column ================= */
 
-/* En pourcentage et non en px : le zoom reduit le viewport CSS, une largeur
-   figee deviendrait vite la moitie de l'ecran. */
+/* Percentage, not px: zoom shrinks the CSS viewport, a fixed width would
+   soon take half the screen. */
 .sys {
   flex: 0 0 42%;
   min-width: 0;
@@ -312,8 +309,7 @@ html, body {
   padding: 0.25rem 0.45rem 0.3rem;
   min-width: 0;
 }
-/* CPU et RESEAU absorbent la hauteur libre : a hauteur fixe la colonne
-   laissait ~260 px de vide, et ca casse des que le zoom change. */
+/* CPU and NETWORK absorb the free height, whatever the zoom. */
 .card.grow { flex: 1 1 0; min-height: 0; }
 
 .cHead {
@@ -338,7 +334,7 @@ html, body {
 }
 .cFoot span { overflow: hidden; text-overflow: ellipsis; }
 
-/* --- grille des 32 coeurs --- */
+/* --- per-core bars --- */
 .cores {
   display: flex; align-items: flex-end; gap: 1px;
   flex: 1 1 auto; min-height: 1.8rem;
@@ -358,7 +354,7 @@ html, body {
   transition: height .28s ease-out, background .28s;
 }
 
-/* --- barres --- */
+/* --- bars --- */
 .bar { height: 0.5rem; background: var(--track); border-radius: 0.25rem; overflow: hidden; flex: 0 0 auto; }
 .bar.sm { height: 0.4rem; flex: 1 1 auto; }
 .barFill {
@@ -374,7 +370,7 @@ html, body {
   font-variant-numeric: tabular-nums; text-align: right;
 }
 
-/* --- reseau --- */
+/* --- network --- */
 .netLive { display: flex; gap: 0.3rem; flex: 0 0 auto; }
 .netCol {
   flex: 1 1 0; min-width: 0; text-align: center;
@@ -389,7 +385,7 @@ html, body {
 }
 .netUnit { font-size: 1.15rem; color: var(--faint); letter-spacing: .3px; line-height: 1.15; }
 
-/* Historique de debit : occupe la hauteur restante de la carte. */
+/* Throughput history: takes the card's remaining height. */
 .netSpark { flex: 1 1 auto; min-height: 1.4rem; margin-top: 0.2rem; position: relative; }
 .netSpark svg { width: 100%; height: 100%; display: block; }
 
@@ -401,9 +397,9 @@ html, body {
 }
 .purge:hover { border-color: var(--down); color: var(--down); }
 
-/* ================= mode nuit ================= */
+/* ================= night mode ================= */
 
-/* Assombrit tout le tableau de bord ; les panneaux (z-index 20) passent au-dessus. */
+/* Dims the whole dashboard; panels (z-index 20) stay above it. */
 .nightVeil {
   position: fixed; inset: 0; z-index: 15;
   background: #000; opacity: 0;
@@ -458,8 +454,8 @@ html, body {
 }
 
 .ranges, .chips, .tabs { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-/* 14 periodes : chips resserrees pour tenir en deux rangees sans manger la
-   courbe, et centrees pour que la 2e rangee incomplete reste equilibree. */
+/* 14 periods: tighter chips so they fit on two rows without eating the
+   chart, centred so an incomplete 2nd row stays balanced. */
 .ranges { margin-top: 0.45rem; justify-content: center; gap: 0.25rem; }
 .ranges .chip { min-height: 2rem; padding: 0 0.5rem; font-size: 1.05rem; }
 .tabs { margin-bottom: 0.55rem; }
@@ -479,7 +475,7 @@ html, body {
 }
 .fLabel + .chips { margin-bottom: 0.6rem; }
 
-/* ---- choix de l'ecran de projection ---- */
+/* ---- target screen ---- */
 .dispList { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.6rem; }
 .dispBtn {
   display: flex; flex-direction: column; align-items: flex-start; gap: 0.02rem;
