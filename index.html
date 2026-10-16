@@ -42,38 +42,47 @@
             </div>
           </div>
         </div>
+        <!-- Temperature over the next 24 hours, on large screens only. -->
+        <canvas class="wChart" id="wChart"></canvas>
         <div class="wStats">
           <div class="wStat"><span class="wLbl" data-i18n="weather.minMax">Min / max</span><span class="wVal" id="wMinMax">--</span></div>
           <div class="wStat"><span class="wLbl" id="wRainLbl" data-i18n="weather.rain">Rain</span><span class="wVal" id="wRain">--</span></div>
           <div class="wStat"><span class="wLbl" id="wWindLbl" data-i18n="weather.wind">Wind</span><span class="wVal" id="wWind">--</span></div>
           <div class="wStat"><span class="wLbl" data-i18n="weather.storm">Storm</span><span class="wVal" id="wStorm">--</span></div>
         </div>
+        <!-- Next 12 hours, on large screens only. -->
+        <div class="wHourly" id="wHourly"></div>
       </section>
     </section>
 
     <!-- ================= system column ================= -->
     <section class="sys">
 
-      <div class="card cpu grow">
+      <!-- A click on a card opens its detail view (history). The canvases only
+           show on large screens. -->
+      <div class="card cpu grow" data-detail="cpu" role="button" tabindex="0" data-i18n-title="detail.open" title="Show the history">
         <div class="cHead"><span>CPU</span><span class="cVal" id="cpuAvg">--</span></div>
         <div class="cores" id="cores"></div>
+        <canvas class="cardChart" id="cpuChart"></canvas>
         <div class="cFoot"><span id="cpuModel">--</span><span id="cpuCount">--</span></div>
       </div>
 
-      <div class="card ram">
+      <div class="card ram" data-detail="ram" role="button" tabindex="0" data-i18n-title="detail.open" title="Show the history">
         <div class="cHead"><span>RAM</span><span class="cVal" id="ramPct">--</span></div>
         <div class="bar"><div class="barFill" id="ramBar"></div></div>
+        <canvas class="cardChart" id="ramChart"></canvas>
         <div class="cFoot"><span id="ramUsed">--</span><span id="ramFree">--</span></div>
       </div>
 
-      <div class="card gpu" id="gpuCard">
+      <div class="card gpu" id="gpuCard" data-detail="gpu" role="button" tabindex="0" data-i18n-title="detail.open" title="Show the history">
         <div class="cHead"><span>GPU</span><span class="cVal" id="gpuUtil">--</span></div>
         <div class="bar"><div class="barFill" id="gpuBar"></div></div>
+        <canvas class="cardChart" id="gpuChart"></canvas>
         <div class="miniRow"><span class="miniLbl">vram</span><div class="bar sm"><div class="barFill" id="vramBar"></div></div><span class="miniVal" id="vramVal">--</span></div>
         <div class="cFoot"><span id="gpuName">--</span><span id="gpuFanTemp">--</span></div>
       </div>
 
-      <div class="card net grow">
+      <div class="card net grow" data-detail="net" role="button" tabindex="0" data-i18n-title="detail.open" title="Show the history">
         <div class="cHead"><span data-i18n="sys.network">NETWORK</span><button class="purge" id="purgeBtn" data-i18n="sys.reset" data-i18n-title="sys.resetTitle" title="Reset the totals">reset</button></div>
         <div class="netLive">
           <div class="netCol">
@@ -88,6 +97,7 @@
           </div>
         </div>
         <div class="netSpark" id="netSpark"></div>
+        <canvas class="cardChart" id="netChart"></canvas>
         <div class="cFoot"><span id="totDown">&#8595; --</span><span id="totUp">&#8593; --</span></div>
       </div>
 
@@ -120,6 +130,26 @@
         <button class="chip" data-range="1y" data-i18n="range.1y">1 yr</button>
         <button class="chip" data-range="3y" data-i18n="range.3y">3 yr</button>
         <button class="chip" data-range="5y" data-i18n="range.5y">5 yr</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= system detail overlay ================= -->
+  <div class="ov" id="sysOv" hidden>
+    <div class="ovBox chartBox">
+      <div class="ovHead">
+        <div>
+          <div class="ovTitle" id="sdTitle">--</div>
+          <div class="sdSub" id="sdSub"></div>
+        </div>
+        <button class="iBtn" data-close>&#10005;</button>
+      </div>
+      <div class="sdBody" id="sdBody"></div>
+      <div class="sdTip" id="sdTip" hidden></div>
+      <div class="ranges" id="sdRanges">
+        <button class="chip" data-hrange="1m" data-i18n="range.1m">1 min</button>
+        <button class="chip active" data-hrange="10m" data-i18n="range.10m">10 min</button>
+        <button class="chip" data-hrange="1h" data-i18n="range.1h">1 h</button>
       </div>
     </div>
   </div>
@@ -247,6 +277,7 @@
   <div class="nightVeil" id="nightVeil"></div>
 
   <script src="i18n.js"></script>
+  <script src="charts.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

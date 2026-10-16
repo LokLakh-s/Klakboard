@@ -11,6 +11,7 @@ const updates = require('./updates');
 const display = require('./display');
 const token = require('./token');
 const autostart = require('./autostart');
+const { createHistory } = require('./history');
 const i18n = require('./i18n');
 const { t } = i18n;
 const { version: APP_VERSION } = require('./package.json');
@@ -54,6 +55,7 @@ const THEME_BG = {
 
 let config;
 let mainWindow;
+const history = createHistory();
 let marketTimer;
 let weatherTimer;
 let pendingUpdate = null;
@@ -609,6 +611,7 @@ app.whenReady().then(() => {
       config.netTotals.rx += sample.net.delta.rx;
       config.netTotals.tx += sample.net.delta.tx;
       totalsDirty = true;
+      history.push(sample);
       if (mainWindow) {
         mainWindow.webContents.send('sys', { ...sample, totals: config.netTotals });
       }
@@ -639,6 +642,7 @@ app.on('before-quit', () => {
 /* ---------------- IPC ---------------- */
 
 ipcMain.handle('get-config', () => config);
+ipcMain.handle('get-history', (_e, range) => history.get(String(range)));
 ipcMain.handle('get-language', () => ({
   setting: config.language,
   ...i18n.resolve(config.language, app.getPreferredSystemLanguages()),

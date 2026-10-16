@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('dash', {
   onSys: (cb) => ipcRenderer.on('sys', (_e, d) => cb(d)),
 
   getConfig: () => ipcRenderer.invoke('get-config'),
+  getHistory: (range) => ipcRenderer.invoke('get-history', range),
   getLanguage: () => ipcRenderer.invoke('get-language'),
   setLanguage: (setting) => ipcRenderer.invoke('set-language', setting),
   showMenu: () => ipcRenderer.invoke('show-menu'),

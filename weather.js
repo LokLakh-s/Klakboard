@@ -52,18 +52,20 @@ async function getWeather(site) {
     forecast_days: '2',
     current: 'temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_gusts_10m,wind_direction_10m',
     daily: 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,sunrise,sunset',
-    hourly: 'cape',
+    hourly: 'cape,temperature_2m,weather_code,is_day,precipitation_probability',
   });
   const res = await fetch(`${OPEN_METEO}?${params}`, { signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
   const d = await res.json();
 
-  // Thunderstorm risk: highest CAPE over the next 12 hours.
+  // Thunderstorm risk: highest CAPE over the next 12 hours. Times are local to
+  // the city ("2026-10-16T14:00"), so they compare as strings.
   const now = d.current.time;
-  const upcoming = d.hourly.time
-    .map((t, i) => ({ t, cape: d.hourly.cape[i] }))
-    .filter((h) => h.t >= now)
-    .slice(0, 12);
+  const nextHours = d.hourly.time
+    .map((t, i) => ({ t, i }))
+    .filter((h) => h.t >= now.slice(0, 13))
+    .slice(0, 24);
+  const upcoming = nextHours.slice(0, 12).map(({ i }) => ({ cape: d.hourly.cape[i] }));
   const capeMax = Math.max(0, ...upcoming.map((h) => h.cape ?? 0));
 
   // City local times without offset: converted to absolute instants.
@@ -84,6 +86,13 @@ async function getWeather(site) {
     windDeg: d.current.wind_direction_10m,
     windMax: Math.round(d.daily.wind_speed_10m_max[0]),
     storm: stormLevel(capeMax),
+    // Next 24 hours, for large screens: hour (local to the city), icon, °C, rain %.
+    hourly: nextHours.map(({ t, i }) => ({
+      hour: Number(t.slice(11, 13)),
+      icon: iconName(d.hourly.weather_code[i], d.hourly.is_day[i] === 1),
+      temp: d.hourly.temperature_2m[i],
+      rainProb: d.hourly.precipitation_probability[i],
+    })),
     // Sunrise and sunset of today and tomorrow (missing during polar night or day).
     sun: d.daily.sunrise.map((rise, i) => ({ rise: toMs(rise), set: toMs(d.daily.sunset[i]) })),
     updatedAt: Date.now(),

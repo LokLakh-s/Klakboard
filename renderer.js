@@ -299,7 +299,7 @@ function palette() {
   if (!themeColors) {
     const cs = getComputedStyle(document.documentElement);
     const v = (n) => cs.getPropertyValue(n).trim();
-    themeColors = { up: v('--up'), down: v('--down'), accent: v('--accent'), line: v('--line'), faint: v('--faint') };
+    themeColors = { up: v('--up'), down: v('--down'), accent: v('--accent'), line: v('--line'), faint: v('--faint'), warn: v('--warn') };
   }
   return themeColors;
 }
@@ -311,6 +311,7 @@ window.dash.onSys((s) => {
   renderSys(s);
   const rate = s.net.rate || { down: null, up: null };
   pushNetHistory(rate.down ?? 0, rate.up ?? 0);
+  onHistoryTick();
 });
 
 function renderSys(s) {
@@ -569,7 +570,13 @@ $('ranges').addEventListener('click', (e) => {
 
 /* ---------------- overlays ---------------- */
 
-function close(el) { el.hidden = true; }
+function close(ov) {
+  ov.hidden = true;
+  if (ov.id === 'sysOv') {
+    detail = null;
+    $('sdTip').hidden = true;
+  }
+}
 
 document.querySelectorAll('[data-close]').forEach((b) =>
   b.addEventListener('click', () => close(b.closest('.ov')))
@@ -599,7 +606,23 @@ function openAdd() {
 
 window.dash.onOpenPanel((name) => (name === 'add' ? openAdd() : openSettings()));
 
-$('purgeBtn').addEventListener('click', async () => {
+// Reset in two clicks: the first arms the button for 3 s.
+let purgeTimer;
+function disarmPurge() {
+  clearTimeout(purgeTimer);
+  $('purgeBtn').classList.remove('armed');
+  $('purgeBtn').textContent = t('sys.reset');
+}
+$('purgeBtn').addEventListener('click', async (e) => {
+  e.stopPropagation();   // the card itself opens the network history
+  const b = $('purgeBtn');
+  if (!b.classList.contains('armed')) {
+    b.classList.add('armed');
+    b.textContent = t('sys.resetConfirm');
+    purgeTimer = setTimeout(disarmPurge, 3000);
+    return;
+  }
+  disarmPurge();
   await window.dash.resetNetTotals();
 });
 
@@ -823,6 +846,248 @@ $('cSearch').addEventListener('input', (e) => {
 
 /* ---------------- startup ---------------- */
 
+/* ---------------- system history ---------------- */
+
+// Same query as the large-screen block of style.css.
+const LARGE_MQ = matchMedia('(min-width: 1500px) and (min-height: 850px) and (min-aspect-ratio: 4/5) and (max-aspect-ratio: 12/5)');
+
+const chartFont = () =>
+  `${Math.round(parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.95)}px "Segoe UI", Selawik, sans-serif`;
+const chartColors = () => ({ grid: palette().line, text: palette().faint });
+
+const fmtPct = (v) => (Number.isFinite(v) ? `${num(v, 0)}%` : '--');
+const fmtRateText = (v) => (Number.isFinite(v) ? fmtRate(v).join(' ') : '--');
+const fmtMiB = (v) => (Number.isFinite(v) ? `${fmtMem(v * 2 ** 20)} ${units()[3]}` : '--');
+const fmtTemp = (v) => (Number.isFinite(v) ? `${num(v, 0)}°C` : '--');
+const lastFinite = (a) => { for (let i = a.length - 1; i >= 0; i--) if (Number.isFinite(a[i])) return a[i]; return NaN; };
+const anyFinite = (a) => a.some(Number.isFinite);
+function stats(a) {
+  let sum = 0, n = 0, max = NaN;
+  for (const v of a) if (Number.isFinite(v)) { sum += v; n++; if (!(v <= max)) max = v; }
+  return { avg: n ? sum / n : NaN, max };
+}
+
+// One request at a time per consumer: a slow answer is not queued behind another.
+function historyFetcher() {
+  let busy = false;
+  return async (range) => {
+    if (busy) return null;
+    busy = true;
+    try { return await window.dash.getHistory(range); } finally { busy = false; }
+  };
+}
+
+/* ---- detail view (click on a system card) ---- */
+
+let detail = null;   // { kind, range, data, hover, tick }
+const fetchDetail = historyFetcher();
+
+/** Charts of each detail view: label, series of the history, axis format, maximum. */
+function detailCharts(kind, data) {
+  const p = palette();
+  if (kind === 'cpu') return [{ label: t('detail.total'), fmt: fmtPct, max: 100, series: [{ values: data.cpu, color: p.accent, fill: true }] }];
+  if (kind === 'ram') return [{ label: t('detail.memory'), fmt: fmtPct, max: 100, series: [{ values: data.ram, color: p.accent, fill: true }] }];
+  if (kind === 'gpu') {
+    const total = lastSys?.gpu?.memTotal;
+    return [
+      { label: t('detail.load'), fmt: fmtPct, max: 100, series: [{ values: data.gpu, color: p.accent, fill: true }] },
+      { label: t('detail.memory'), fmt: fmtMiB, max: total || undefined, series: [{ values: data.gpuMem, color: p.up, fill: true }] },
+      anyFinite(data.gpuTemp) && { label: t('detail.temp'), fmt: fmtTemp, max: 100, series: [{ values: data.gpuTemp, color: p.down }] },
+    ].filter(Boolean);
+  }
+  return [{
+    label: `${t('detail.down')} / ${t('detail.up')}`, fmt: fmtRateText, floor: 64000,
+    series: [{ values: data.down, color: p.up, fill: true }, { values: data.up, color: p.accent }],
+  }];
+}
+
+function openDetail(kind) {
+  detail = { kind, range: '10m', data: null, hover: null, tick: 0, built: null };
+  document.querySelectorAll('#sdRanges .chip').forEach((c) => c.classList.toggle('active', c.dataset.hrange === '10m'));
+  $('sysOv').hidden = false;
+  $('sdBody').replaceChildren(el('div', 'sdEmpty', t('chart.loading')));
+  refreshDetail();
+}
+
+async function refreshDetail() {
+  if (!detail) return;
+  const { kind, range } = detail;
+  const data = await fetchDetail(range);
+  if (!data || !detail || detail.kind !== kind || detail.range !== range) return;
+  detail.data = data;
+  renderDetail();
+}
+
+/** (Re)builds the canvases when the view or the core count changes, then draws. */
+function renderDetail() {
+  if (!detail?.data) return;
+  const { kind, data } = detail;
+  const titles = { cpu: 'CPU', ram: 'RAM', gpu: 'GPU', net: t('sys.network') };
+  $('sdTitle').textContent = titles[kind];
+  $('sdSub').textContent = detailSubtitle(kind, data);
+  if (data.t.length < 2) {
+    $('sdBody').replaceChildren(el('div', 'sdEmpty', t('detail.noData')));
+    detail.built = null;
+    return;
+  }
+  const defs = detailCharts(kind, data);
+  const shape = `${kind}:${defs.length}:${kind === 'cpu' ? data.cores.length : 0}:${i18n.lang}`;
+  if (detail.built !== shape) buildDetail(kind, defs, data);
+  detail.built = shape;
+  drawDetail(defs, data);
+}
+
+function detailSubtitle(kind, data) {
+  const s = lastSys;
+  if (!s) return '';
+  if (kind === 'cpu') {
+    const per = s.cpu.per;
+    const i = per.indexOf(Math.max(...per));
+    return `${$('cpuModel').textContent} · ${t('sys.threads', { n: per.length })} · ${t('detail.busiest', { n: i, value: fmtPct(per[i]) })}`;
+  }
+  if (kind === 'ram') return `${$('ramUsed').textContent} · ${$('ramFree').textContent}`;
+  if (kind === 'gpu') return s.gpu ? [s.gpu.name, $('gpuFanTemp').textContent].filter(Boolean).join(' · ') : t('sys.noGpu');
+  const [rv, ru] = fmtBytes(s.totals.rx);
+  const [tv, tu] = fmtBytes(s.totals.tx);
+  return `↓ ${rv} ${ru} · ↑ ${tv} ${tu}`;
+}
+
+function buildDetail(kind, defs) {
+  const body = $('sdBody');
+  body.replaceChildren();
+  detail.canvases = defs.map((d) => {
+    const box = el('div', 'sdChart');
+    const label = el('div', 'sdLabel');
+    label.append(el('span', null, d.label), el('span', 'sdNow'));
+    const canvas = document.createElement('canvas');
+    canvas.className = 'sdHover';
+    box.append(label, canvas);
+    body.appendChild(box);
+    return { canvas, now: label.lastChild };
+  });
+  if (kind === 'net') {
+    detail.stats = el('div', 'sdStats');
+    body.appendChild(detail.stats);
+  }
+  if (kind === 'cpu') {
+    const grid = el('div', 'coreGrid');
+    const n = detail.data.cores.length;
+    const cols = n <= 4 ? n : n <= 16 ? Math.min(8, Math.ceil(n / 2)) : Math.ceil(n / 4);
+    grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+    detail.cores = detail.data.cores.map(() => {
+      const cell = el('div', 'coreCell');
+      const label = el('span');
+      const canvas = document.createElement('canvas');
+      cell.append(label, canvas);
+      grid.appendChild(cell);
+      return { label, canvas };
+    });
+    body.appendChild(grid);
+  }
+  for (const { canvas } of detail.canvases) {
+    canvas.addEventListener('mousemove', (e) => {
+      detail.hover = charts.indexAt(canvas, detail.geom, e.clientX);
+      drawDetail(detailCharts(detail.kind, detail.data), detail.data, e);
+    });
+    canvas.addEventListener('mouseleave', () => {
+      detail.hover = null;
+      $('sdTip').hidden = true;
+      drawDetail(detailCharts(detail.kind, detail.data), detail.data);
+    });
+  }
+}
+
+function drawDetail(defs, data, pointer) {
+  const font = chartFont();
+  const colors = chartColors();
+  const fmtT = (ms) => fmtTime(ms, detail.range === '1h' ? { hour: 'numeric', minute: '2-digit' } : undefined);
+  const hover = detail.hover;
+  defs.forEach((d, k) => {
+    const c = detail.canvases[k];
+    if (!c) return;
+    const geom = charts.draw(c.canvas, { t: data.t, series: d.series, max: d.max, floor: d.floor, fmtY: d.fmt, fmtT, font, colors, hover });
+    if (k === 0) detail.geom = geom;
+    c.now.textContent = d.series.map((s) => d.fmt(hover != null ? s.values[hover] : lastFinite(s.values))).join(' / ');
+  });
+  if (detail.kind === 'net' && detail.stats) {
+    const line = (arrow, label, values) => {
+      const st = stats(values);
+      const span = el('span', null, `${arrow} ${t('detail.labelValue', { label, value: '' }).trimEnd()} `);
+      [[t('detail.now'), lastFinite(values)], [t('detail.avg'), st.avg], [t('detail.peak'), st.max]].forEach(([name, v], i) => {
+        span.append(`${i ? ' · ' : ''}${name} `, el('b', null, fmtRateText(v)));
+      });
+      return span;
+    };
+    detail.stats.replaceChildren(line('↓', t('detail.down'), data.down), line('↑', t('detail.up'), data.up));
+  }
+  if (detail.cores) {
+    const p = palette();
+    detail.cores.forEach((c, i) => {
+      const v = data.cores[i];
+      c.label.textContent = `#${i} · ${fmtPct(hover != null ? v[hover] : lastFinite(v))}`;
+      charts.draw(c.canvas, { t: data.t, series: [{ values: v, color: p.up, fill: true, width: 1 }], max: 100, colors, hover });
+    });
+  }
+  const tip = $('sdTip');
+  if (hover != null && pointer) {
+    tip.textContent = [fmtTime(data.t[hover]),
+      ...defs.map((d) => t('detail.labelValue', { label: d.label, value: d.series.map((s) => d.fmt(s.values[hover])).join(' / ') }))].join('\n');
+    tip.hidden = false;
+    const x = Math.min(pointer.clientX + 14, innerWidth - tip.offsetWidth - 6);
+    tip.style.left = `${x}px`;
+    tip.style.top = `${Math.max(6, pointer.clientY - tip.offsetHeight - 10)}px`;
+  } else if (!pointer) {
+    tip.hidden = true;
+  }
+}
+
+$('sdRanges').addEventListener('click', (e) => {
+  const b = e.target.closest('.chip');
+  if (!b || !detail) return;
+  detail.range = b.dataset.hrange;
+  detail.hover = null;
+  document.querySelectorAll('#sdRanges .chip').forEach((c) => c.classList.toggle('active', c === b));
+  refreshDetail();
+});
+
+for (const card of document.querySelectorAll('[data-detail]')) {
+  card.addEventListener('click', () => openDetail(card.dataset.detail));
+  card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(card.dataset.detail); }
+  });
+}
+
+/* ---- history curves in the cards (large screens) ---- */
+
+const fetchCards = historyFetcher();
+
+async function drawCardCharts() {
+  const data = await fetchCards('5m');
+  if (!data || data.t.length < 2) return;
+  const p = palette();
+  const font = chartFont();
+  const colors = chartColors();
+  const opts = { t: data.t, font, colors };
+  charts.draw($('cpuChart'), { ...opts, max: 100, fmtY: fmtPct, series: [{ values: data.cpu, color: p.accent, fill: true }] });
+  charts.draw($('ramChart'), { ...opts, max: 100, fmtY: fmtPct, series: [{ values: data.ram, color: p.accent, fill: true }] });
+  charts.draw($('gpuChart'), { ...opts, max: 100, fmtY: fmtPct, series: [{ values: data.gpu, color: p.accent, fill: true }] });
+  charts.draw($('netChart'), { ...opts, floor: 64000, fmtY: fmtRateText,
+    series: [{ values: data.down, color: p.up, fill: true }, { values: data.up, color: p.accent }] });
+}
+
+/** Every second, with each system sample. */
+function onHistoryTick() {
+  if (detail && !$('sysOv').hidden) {
+    // The hour view moves by 10-second steps.
+    if (detail.range !== '1h' || detail.tick++ % 10 === 0) refreshDetail();
+  }
+  if (LARGE_MQ.matches) drawCardCharts();
+}
+
+LARGE_MQ.addEventListener('change', () => {
+  if (LARGE_MQ.matches) { drawCardCharts(); drawWeatherChart(); }
+});
+
 /* ---------------- language ---------------- */
 
 /** Texts written in index.html, by their data-i18n* attributes. */
@@ -849,6 +1114,9 @@ function applyLanguage({ lang, locale }) {
   if (!$('chartOv').hidden) loadChart();
   if (!$('addOv').hidden) buildMetalPicker();
   if (!$('setOv').hidden) buildDisplayList();
+  if (detail) renderDetail();
+  if (LARGE_MQ.matches) drawCardCharts();
+  disarmPurge();
   syncSettings();
 }
 
@@ -882,6 +1150,8 @@ $('menuBtn').addEventListener('click', () => window.dash.showMenu());
 
 window.addEventListener('resize', () => {
   if (!$('chartOv').hidden) loadChart();
+  if (detail) renderDetail();
+  if (LARGE_MQ.matches) { drawCardCharts(); drawWeatherChart(); }
 });
 
 /* ---------------- weather ---------------- */
@@ -893,7 +1163,28 @@ let lastWeather = null;
 let needsSite = false;
 
 /** Weather card without a city: invites the user to pick one. */
+/** Temperature over the next 24 hours (large screens); the axis shows the city's hours. */
+function drawWeatherChart() {
+  if (!LARGE_MQ.matches) return;
+  const temps = lastHours.map((h) => h.temp);
+  if (temps.length < 2) {
+    charts.draw($('wChart'), { t: [], series: [] });
+    return;
+  }
+  const lo = Math.floor(Math.min(...temps)) - 2;
+  const hi = Math.ceil(Math.max(...temps)) + 2;
+  charts.draw($('wChart'), {
+    t: temps.map((_, i) => i), min: lo, max: hi,
+    series: [{ values: temps, color: palette().warn, fill: true, width: 2 }],
+    fmtY: (v) => `${Math.round(v)}°`, fmtT: (i) => cityHour(lastHours[i].hour),
+    font: chartFont(), colors: chartColors(),
+  });
+}
+
 function renderNoSite() {
+  lastHours = [];
+  drawWeatherChart();
+  $('wHourly').replaceChildren();
   $('wIcon').hidden = true;
   $('wSite').textContent = '--';
   $('wTemp').textContent = '--';
@@ -923,6 +1214,27 @@ function renderWeather(d) {
   const storm = $('wStorm');
   storm.textContent = t(`storm.${d.storm}`);
   storm.className = `wVal ${STORM_CLASS[d.storm] || ''}`;
+  renderHourly(d.hourly || []);
+}
+
+// "4 h" rather than "04 h": French CLDR pads the hour even in numeric form.
+const cityHour = (h) => new Date(2000, 0, 1, h).toLocaleTimeString(i18n.locale, { hour: 'numeric' }).replace(/^0(\d)/, '$1');
+let lastHours = [];
+
+/** Next 12 hours (large screens): hour of the city, icon, temperature, rain chance. */
+function renderHourly(hours) {
+  lastHours = hours;
+  drawWeatherChart();
+  $('wHourly').replaceChildren(...hours.slice(0, 12).map((h) => {
+    const cell = el('div', 'wHour');
+    const img = document.createElement('img');
+    img.className = 'wHourI';
+    img.src = `icons/weather/${h.icon}.svg`;
+    img.alt = '';
+    cell.append(el('span', 'wHourT', cityHour(h.hour)), img, el('span', 'wHourV', `${Math.round(h.temp)}°`),
+      el('span', 'wHourR', h.rainProb > 0 ? `${h.rainProb} %` : ''));
+    return cell;
+  }));
 }
 
 function renderWeatherEvent({ data, error, needsSite: noSite }) {

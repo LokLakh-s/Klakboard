@@ -39,18 +39,25 @@ test('everything the app loads is packaged', () => {
   const packaged = (f) => build.files.includes(f)
     || build.files.some((g) => g.endsWith('/**/*') && f.startsWith(g.slice(0, -4)));
 
-  // Local modules required, transitively from main.js.
+  // Local modules required, transitively from main.js (paths relative to the
+  // requiring file).
   const seen = new Set();
   const visit = (file) => {
     if (seen.has(file)) return;
     seen.add(file);
-    for (const [, dep] of read(file).matchAll(/require\('\.\/([\w.-]+)'\)/g)) {
-      visit(dep.endsWith('.js') || dep.endsWith('.json') ? dep : `${dep}.js`);
+    for (const [, dep] of read(file).matchAll(/require\('(\.{1,2}\/[\w./-]+)'\)/g)) {
+      const rel = path.posix.join(path.posix.dirname(file), dep);
+      visit(rel.endsWith('.js') || rel.endsWith('.json') ? rel : `${rel}.js`);
     }
   };
   visit('main.js');
   seen.add('preload.js');
   for (const [, ref] of read('index.html').matchAll(/(?:src|href)="([\w./-]+)"/g)) seen.add(ref);
+  for (const [, ref] of read('style.css').matchAll(/url\("([\w./-]+)"\)/g)) seen.add(ref);
+  // Tray icons picked per platform in main.js, and the Retina variant.
+  for (const [, icon] of read('main.js').matchAll(/'((?:tray[\w-]*\.png)|icon\.ico)'/g)) seen.add(`build/${icon}`);
+  seen.add('build/tray@2x.png');
+  assert.ok(seen.has('platform/win32.js') && seen.has('history.js') && seen.has('fonts/selawik-bold.woff2'));
 
   for (const f of seen) {
     if (f === 'package.json') continue; // always packaged by electron-builder
@@ -358,4 +365,44 @@ test('update outside Windows: the release page', () => {
     { version: '1.8.0', kind: 'page', url: 'https://github.com/LokLakh-s/Klakboard/releases/tag/klakboard-v1.8.0' });
   assert.equal(pickUpdate(releases, '1.8.0', '44', 'linux'), null);
   assert.equal(pickUpdate(releases, '1.7.0', '44', 'win32'), null, 'no file for Windows in this release');
+});
+
+test('history: rings, 10-second averages, missing values', () => {
+  const { createHistory, Ring, FINE_LEN, COARSE_STEP } = require('../history');
+  const ring = new Ring(3);
+  [1, 2, 3, 4].forEach((v) => ring.push(v));
+  assert.deepEqual([...ring.last()], [2, 3, 4]);
+  assert.deepEqual([...ring.last(2)], [3, 4]);
+
+  const h = createHistory();
+  const sample = (i, gpu) => ({
+    cpu: { per: [i, 100 - i], avg: 50 },
+    ram: { pct: 40 },
+    gpu: gpu ? { util: i, memUsed: 1000, temp: null } : null,
+    net: { rate: i % 2 ? { down: 1000, up: 10 } : null },
+  });
+  const t0 = 1_000_000;
+  for (let i = 0; i < 25; i++) h.push(sample(i, i < 5), t0 + i * 1000);
+
+  const m = h.get('1m');
+  assert.equal(m.t.length, 25);
+  assert.equal(m.t[24], t0 + 24000);
+  assert.deepEqual([...m.cores[0].slice(0, 3)], [0, 1, 2]);
+  assert.ok(Number.isNaN(m.gpu[10]), 'no GPU sample -> NaN');
+  assert.ok(Number.isNaN(m.gpuTemp[0]), 'null temperature -> NaN');
+
+  const hour = h.get('1h');
+  assert.equal(hour.t.length, Math.floor(25 / COARSE_STEP));
+  assert.equal(hour.cores[0][0], 4.5, 'mean of 0..9');
+  assert.equal(hour.gpu[0], 2, 'mean of the 5 known values');
+  assert.ok(Number.isNaN(hour.gpu[1]), 'no value at all -> NaN');
+  assert.equal(hour.down[0], 1000, 'silent counters ignored in the mean');
+
+  for (let i = 0; i < FINE_LEN + 50; i++) h.push(sample(i, true), t0 + (25 + i) * 1000);
+  assert.equal(h.get('10m').t.length, FINE_LEN);
+  assert.equal(h.get('5m').t.length, 300);
+
+  h.push({ cpu: { per: [1, 2, 3, 4], avg: 2 }, ram: { pct: 1 }, gpu: null, net: { rate: null } });
+  assert.equal(h.get('1m').cores.length, 4, 'core count change restarts the history');
+  assert.equal(createHistory().get('10m').t.length, 0);
 });

@@ -44,6 +44,8 @@
       "display.js",
       "token.js",
       "i18n.js",
+      "charts.js",
+      "history.js",
       "icons/**/*",
       "autostart.js",
       "platform/**/*",

@@ -340,6 +340,12 @@ html, body {
 }
 /* CPU and NETWORK absorb the free height, whatever the zoom. */
 .card.grow { flex: 1 1 0; min-height: 0; }
+/* A click opens the card's history. */
+.card[data-detail] { cursor: pointer; transition: background .12s; }
+.card[data-detail]:hover, .card[data-detail]:focus-visible { background: var(--hover); outline: none; }
+
+/* History curves inside the cards: large screens only. */
+.cardChart { display: none; width: 100%; min-height: 0; margin-top: 0.3rem; }
 
 .cHead {
   display: flex; justify-content: space-between; align-items: baseline;
@@ -425,6 +431,8 @@ html, body {
   transition: all .15s;
 }
 .purge:hover { border-color: var(--down); color: var(--down); }
+/* First click arms the reset, a second one within 3 s confirms it. */
+.purge.armed { border-color: var(--down); color: var(--down); background: color-mix(in srgb, var(--down) 16%, transparent); }
 
 /* ================= screen shapes =================
  * The layout above is for landscape screens close to 3:2 (960 x 640,
@@ -491,6 +499,64 @@ html, body {
   .cFoot { flex-wrap: wrap; column-gap: 0.6rem; row-gap: 0; }
   .cHead { flex-wrap: wrap; }
 }
+
+.wChart { display: none; flex: 1 1 0; min-height: 6rem; width: 100%; margin: 0.4rem 0; }
+
+.wHourly {
+  display: none;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 0.2rem;
+  margin-top: 0.3rem; padding-top: 0.4rem;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+.wHour { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.wHourT { font-size: 1.05rem; color: var(--faint); white-space: nowrap; }
+.wHourI { width: 3.2rem; height: 3.2rem; margin: -0.4rem 0; }
+.wHourV { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wHourR { font-size: 1.05rem; color: var(--accent); font-variant-numeric: tabular-nums; min-height: 1.2em; }
+
+/* Large screens (a normal monitor, from about 1500 x 850 CSS px): history
+   curves in the system cards and the next 12 hours in the weather card. */
+@media (min-width: 1500px) and (min-height: 850px) and (min-aspect-ratio: 4/5) and (max-aspect-ratio: 12/5) {
+  .cardChart { display: block; }
+  .card.cpu .cores { flex: 1 1 0; }
+  .card.cpu .cardChart, .card.net .cardChart { flex: 1 1 0; }
+  .card.ram .cardChart, .card.gpu .cardChart { height: 5.5rem; flex: 0 0 auto; }
+  .card.net .netSpark { display: none; }
+  .wHourly { display: grid; }
+  .wMain { flex: 0 0 auto; }
+  .wChart { display: block; }
+}
+
+/* ================= system detail ================= */
+
+.sdSub { font-size: 1.15rem; color: var(--faint); margin-top: 0.1rem; }
+.sdBody { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 0.5rem; position: relative; }
+.sdChart { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
+.sdLabel {
+  display: flex; justify-content: space-between; gap: 0.5rem;
+  font-size: 1.15rem; color: var(--dim); font-weight: 600;
+}
+.sdLabel .sdNow { color: var(--txt); font-variant-numeric: tabular-nums; }
+.sdChart canvas { flex: 1 1 auto; min-height: 0; width: 100%; }
+.coreGrid { flex: 1.4 1 0; min-height: 0; display: grid; gap: 0.25rem; }
+.coreCell {
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  background: var(--inset); border-radius: 0.3rem; padding: 0.1rem 0.25rem 0.2rem;
+}
+.coreCell span { font-size: 0.95rem; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
+.coreCell canvas { flex: 1 1 auto; min-height: 0; width: 100%; margin-top: 0.15rem; }
+.sdStats { display: flex; flex-wrap: wrap; gap: 0.3rem 1.2rem; font-size: 1.1rem; color: var(--faint); }
+.sdStats b { color: var(--txt); font-variant-numeric: tabular-nums; }
+.sdEmpty { margin: auto; color: var(--faint); font-size: 1.15rem; }
+.sdTip {
+  position: fixed; z-index: 30; pointer-events: none;
+  background: var(--card); border: 1px solid var(--line); border-radius: 0.3rem;
+  padding: 0.2rem 0.45rem; font-size: 1.05rem; color: var(--txt);
+  font-variant-numeric: tabular-nums; white-space: pre;
+}
+.sdTip[hidden] { display: none; }
 
 /* ================= night mode ================= */
 
