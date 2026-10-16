@@ -17,12 +17,11 @@
 
 Klakboard is a frameless desktop app that lives in the notification area and
 covers the secondary screen of your choice, above the taskbar. It was designed
-for a 3.6-inch 960 × 640 panel (about 325 PPI) and works on any display your
-system sees as a monitor; resolution and zoom are adjustable.
+for a 3.6-inch 960 × 640 panel (about 325 PPI) and adapts to bar and portrait
+screens; resolution and zoom are adjustable.
 
-> **Status** — Windows 10/11. The interface is in French for now: English is
-> next, then layouts for bar and portrait screens, then macOS and Linux (see
-> [Roadmap](#roadmap)).
+> **Status** — Windows 10/11, interface in English and French. macOS and Linux
+> are next (see [Roadmap](#roadmap)).
 
 ## Features
 
@@ -48,8 +47,9 @@ temperature, feels-like, min/max, rain, wind and gusts, thunderstorm risk
 - NVIDIA GPU: load, VRAM, fan, temperature
 - Network: live rates, 90-second history, resettable totals
 
-**Comfort** — 7 muted themes, zoom from 100 to 175 %, night mode (dims the
-screen from sunset to sunrise at the weather city), start with Windows.
+**Comfort** — English and French (following the system, or picked in the
+settings), 7 muted themes, zoom from 100 to 175 %, night mode (dims the screen
+from sunset to sunrise at the weather city), start with Windows.
 
 **Screens** — the screen chosen in the settings is remembered. If it is missing
 (not detected yet at login, unplugged), the window waits hidden instead of
@@ -63,9 +63,24 @@ covering your main screen, and comes back with it.
 ### Which screens?
 
 Any screen connected as a display (HDMI, DisplayPort, USB-C or DisplayLink):
-small 3.5 to 8-inch panels, a spare monitor, a tablet used as a second screen.
-The layout is tuned for landscape screens close to 3:2 or 4:3 (960 × 640,
-1024 × 600, 800 × 480…).
+small 3.5 to 8-inch panels, bar screens, a spare monitor, a tablet used as a
+second screen. The layout follows the shape of the screen:
+
+- **landscape** panels close to 3:2 or 4:3 (960 × 640, 1024 × 600, 800 × 480…);
+- **bar** screens, 2.4:1 and wider (1920 × 480, 1920 × 440, 2560 × 720, 1280 × 400…);
+- **portrait** screens, 4:5 and narrower (480 × 800, 600 × 1024, 480 × 1920…).
+
+<p align="center">
+  <img src="docs/screenshots/bar-1920x480.png" width="720" alt="Bar layout on a 1920 × 480 screen: badges, weather and system side by side">
+</p>
+<p align="center">
+  <img src="docs/screenshots/portrait-600x1024.png" width="240" alt="Portrait layout on a 600 × 1024 screen">
+  <img src="docs/screenshots/dashboard-light-fr.png" width="360" alt="Light theme, in French">
+</p>
+
+On first launch Klakboard covers such a secondary screen by itself (960 × 640
+first, then the smallest small panel or bar screen); ordinary monitors are only
+used when picked in *Full screen on…*.
 
 Small "sensor panel" screens sold with their own software and driven over a
 USB serial link are not displays for the system: Klakboard cannot use them.
@@ -85,8 +100,10 @@ gh attestation verify Klakboard.Setup.<version>.exe -R LokLakh-s/Klakboard
 
 ## Usage
 
-Everything goes through the notification area icon: click to show or hide,
-right-click for the menu (add a row, settings, refresh, updates, quit).
+Click the notification area icon to show or hide the dashboard. The menu (add
+a row, settings, refresh, updates, quit) opens with a right click on that icon,
+a right click anywhere in the dashboard (long press on a touch screen), or the
+⋮ button that appears when hovering the top bar.
 
 | | |
 |---|---|
@@ -167,7 +184,8 @@ updates.js    finds and downloads releases
 updater.js    swaps the app archive after exit (runs outside the app)
 preload.js    IPC bridge (context isolation on)
 renderer.js   rendering: badges, charts, settings
-style.css     themes and type scale
+i18n.js       interface strings (English, French), shared by main and page
+style.css     themes, type scale, landscape / bar / portrait layouts
 test/         node:test suites; main.js runs against a fake electron module
 ```
 
@@ -178,11 +196,10 @@ truncated file; an unreadable file is set aside, never overwritten.
 
 ## Roadmap
 
-1. English interface (with French kept), settings reachable from the window.
-2. Layouts for bar screens (1920 × 480, 2560 × 720) and portrait screens; GPU
-   load for AMD and Intel on Windows.
-3. macOS and Linux builds.
-4. Larger screens: more details, and detailed CPU (per core), GPU and network
+1. ~~Public release~~ (1.6.0), ~~English and French, menu inside the window,
+   bar and portrait layouts~~ (1.7.0).
+2. macOS and Linux builds, GPU load for AMD and Intel.
+3. Larger screens: more details, and detailed CPU (per core), GPU and network
    charts on click.
 
 The full review behind this plan, in French: [docs/AUDIT-2026-10-16.md](docs/AUDIT-2026-10-16.md).
