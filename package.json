@@ -1,6 +1,6 @@
 {
   "name": "klakboard",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Dashboard for secondary displays: markets (metals, currencies, crypto), weather and system monitoring",
   "main": "main.js",
   "author": "Klakh",
