@@ -92,7 +92,7 @@ test('libelle des villes meteo', () => {
   const { placeLabel } = require('../weather');
   assert.equal(placeLabel({ name: 'Paris', country_code: 'FR', postcodes: ['75001'] }), 'Paris (75)');
   assert.equal(placeLabel({ name: 'Saint-Pierre', country_code: 'FR', postcodes: ['97410'] }), 'Saint-Pierre (974)');
-  assert.equal(placeLabel({ name: 'Paris', country_code: 'BE', postcodes: ['8000'] }), 'Paris (BE)');
+  assert.equal(placeLabel({ name: 'Paris', country_code: 'US', postcodes: ['75460'] }), 'Paris (US)');
   assert.equal(placeLabel({ name: 'Nulle-part' }), 'Nulle-part');
 });
 
@@ -144,4 +144,44 @@ test('tout ce que la page appelle est expose par preload.js', () => {
   const exposed = new Set([...read('preload.js').matchAll(/^\s+(\w+):/gm)].map((m) => m[1]));
   const missing = [...used].filter((f) => !exposed.has(f));
   assert.deepEqual(missing, []);
+});
+
+test('lignes recues de la page : champs connus seulement, invalides refusees', () => {
+  const { normalizeItem } = require('../markets');
+  assert.deepEqual(normalizeItem({ kind: 'metal', code: 'XAU', extra: 1 }), { kind: 'metal', code: 'XAU' });
+  assert.equal(normalizeItem({ kind: 'metal', code: 'XYZ' }), null);
+  assert.deepEqual(normalizeItem({ kind: 'fx', from: 'EUR', to: 'USD' }), { kind: 'fx', from: 'EUR', to: 'USD' });
+  assert.equal(normalizeItem({ kind: 'fx', from: 'EUR', to: 'EUR' }), null);
+  assert.deepEqual(
+    normalizeItem({ kind: 'crypto', symbol: '币安人生', vs: 'USDT', binance: '币安人生USDT' }),
+    { kind: 'crypto', symbol: '币安人生', vs: 'USDT', binance: '币安人生USDT' },
+  );
+  assert.equal(normalizeItem({ kind: 'crypto', symbol: 'BTC', vs: 'USDT', binance: 'BTCUSDT&limit=1' }), null);
+  assert.equal(normalizeItem(null), null);
+  assert.equal(normalizeItem({ kind: 'stock' }), null);
+});
+
+test('une paire crypto refusee par Binance ne grise pas les autres', async () => {
+  const markets = require('../markets');
+  const realFetch = global.fetch;
+  const json = (status, body) => ({ ok: status === 200, status, json: async () => body });
+  global.fetch = async (url) => {
+    const u = new URL(url);
+    if (u.searchParams.has('symbols')) return json(400, { code: -1121, msg: 'Invalid symbol.' });
+    const sym = u.searchParams.get('symbol');
+    if (sym === 'GONEUSDT') return json(400, { code: -1121, msg: 'Invalid symbol.' });
+    return json(200, { symbol: sym, lastPrice: '100', priceChangePercent: '1.5' });
+  };
+  try {
+    const { quotes, errors } = await markets.getQuotes([
+      { kind: 'crypto', symbol: 'BTC', vs: 'USDT', binance: 'BTCUSDT' },
+      { kind: 'crypto', symbol: 'GONE', vs: 'USDT', binance: 'GONEUSDT' },
+    ]);
+    assert.deepEqual(quotes['crypto:BTCUSDT'], { price: 100, change24h: 1.5 });
+    assert.deepEqual(quotes['crypto:GONEUSDT'], { price: null, change24h: null });
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /GONE\/USDT/);
+  } finally {
+    global.fetch = realFetch;
+  }
 });

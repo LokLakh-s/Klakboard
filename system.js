@@ -138,6 +138,7 @@ function readProcNetDev() {
 }
 
 let netProc = null;
+let netTimer = null;
 let netStopped = false;
 let netRestartMs = 2000;
 let prevNet = null;      // { rx, tx, at }
@@ -195,7 +196,7 @@ function startNet() {
   if (IS_WIN) {
     spawnNetLoop();
   } else {
-    setInterval(() => {
+    netTimer = setInterval(() => {
       const c = readProcNetDev();
       if (c) onNetCounters(c.rx, c.tx);
     }, TICK_MS);
@@ -232,6 +233,7 @@ function stop() {
   netStopped = true;
   clearInterval(tickTimer);
   clearInterval(gpuTimer);
+  clearInterval(netTimer);
   if (netProc) netProc.kill();
 }
 

@@ -104,16 +104,16 @@ test('resolution fenetree : passe en mode fenetre et y reste', async () => {
   assert.equal(app.window.bounds.width, 800, 'un changement d\'ecran ne doit pas la ré-agrandir');
 });
 
-test('ville meteo : Paris par defaut, choix valide retenu, saisie invalide ignoree', async () => {
+test('ville meteo : aucune par defaut, choix valide retenu, saisie invalide ignoree', async () => {
   const app = await loadMain({ displays: [primary(), small()] });
   let config = await app.invoke('get-config');
-  assert.equal(config.weatherSite.label, 'Paris (75)');
+  assert.equal(config.weatherSite, null);
 
-  config = await app.invoke('set-weather-site', { label: 'Paris (BE)', lat: 51.2, lon: 3.22, timezone: 'Europe/Brussels' });
-  assert.deepEqual(config.weatherSite, { label: 'Paris (BE)', lat: 51.2, lon: 3.22, timezone: 'Europe/Brussels' });
+  config = await app.invoke('set-weather-site', { label: 'Paris (75)', lat: 48.85, lon: 2.35, timezone: 'Europe/Paris' });
+  assert.deepEqual(config.weatherSite, { label: 'Paris (75)', lat: 48.85, lon: 2.35, timezone: 'Europe/Paris' });
 
   config = await app.invoke('set-weather-site', { label: 'x', lat: 'abc', lon: 3 });
-  assert.equal(config.weatherSite.label, 'Paris (BE)');
+  assert.equal(config.weatherSite.label, 'Paris (75)');
   config = await app.invoke('set-weather-site', { label: 'Pole', lat: 89, lon: 0, timezone: 'x; rm -rf' });
   assert.equal(config.weatherSite.timezone, 'auto');
 });

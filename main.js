@@ -22,7 +22,7 @@ const DEFAULT_CONFIG = {
   netTotals: { rx: 0, tx: 0 },
   bounds: null,
   display: null,   // ecran choisi dans "Plein ecran sur…" : { id, width, height }
-  weatherSite: weather.DEFAULT_SITE,
+  weatherSite: null,   // choisie au premier lancement
   night: { enabled: true, dim: 0.5 },   // assombrissement du coucher au lever du soleil
   items: [
     { kind: 'metal', code: 'XAU' },
@@ -59,16 +59,19 @@ function quitApp() {
 
 const configPath = () => path.join(app.getPath('userData'), 'dashboard.json');
 
+// Copie profonde : la config modifie ses objets (items, netTotals) sur place.
+const defaultConfig = () => JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+
 function loadConfig() {
   const file = configPath();
   let raw;
   try {
     raw = fs.readFileSync(file, 'utf8');
   } catch {
-    return JSON.parse(JSON.stringify(DEFAULT_CONFIG)); // premier lancement
+    return defaultConfig(); // premier lancement
   }
   try {
-    const loaded = { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+    const loaded = { ...defaultConfig(), ...JSON.parse(raw) };
     // Le theme "blue" a ete remplace par "forest".
     if (loaded.theme === 'blue') loaded.theme = 'forest';
     return loaded;
@@ -79,7 +82,7 @@ function loadConfig() {
       fs.renameSync(file, `${file}.illisible-${Date.now()}`);
     } catch {}
     console.error('config illisible, valeurs par defaut:', err.message);
-    return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+    return defaultConfig();
   }
 }
 
@@ -366,6 +369,12 @@ async function refreshSparks() {
 
 async function refreshWeather() {
   if (!mainWindow) return;
+  if (!config.weatherSite) {
+    lastSun = null;
+    mainWindow.webContents.send('weather', { data: null, error: null, needsSite: true });
+    applyNight();
+    return;
+  }
   try {
     const data = await weather.getWeather(config.weatherSite);
     lastSun = data.sun;
@@ -510,7 +519,7 @@ async function installUpdate(update = pendingUpdate) {
 
 // Windows n'affiche les notifications que pour un AppUserModelID connu : celui
 // du raccourci cree par l'installeur, c'est-a-dire build.appId.
-app.setAppUserModelId('com.klakh.klakboard');
+if (process.platform === 'win32') app.setAppUserModelId('com.klakh.klakboard');
 
 // Une seule instance : relancer Klakboard pendant qu'elle tourne (ou pendant une
 // relance de mise a jour) affiche la fenetre existante au lieu d'en ouvrir une autre.
@@ -598,7 +607,8 @@ ipcMain.handle('get-catalogs', () => ({
 }));
 
 ipcMain.handle('set-refresh', (_e, ms) => {
-  config.refreshMs = ms;
+  // Borne basse : en dessous, les sources sans cle API finissent par refuser.
+  config.refreshMs = Math.min(3600000, Math.max(5000, Number(ms) || DEFAULT_CONFIG.refreshMs));
   saveConfig();
   restartMarketTimer();
   return config;
@@ -692,7 +702,7 @@ ipcMain.handle('set-auto-launch', (_e, on) => {
 });
 
 ipcMain.handle('set-theme', (_e, name) => {
-  config.theme = String(name || 'dark');
+  config.theme = Object.hasOwn(THEME_BG, name) ? name : 'dark';
   saveConfig();
   return config;
 });
@@ -716,7 +726,9 @@ ipcMain.handle('set-cover-taskbar', (_e, on) => {
   return config;
 });
 
-ipcMain.handle('add-item', (_e, item) => {
+ipcMain.handle('add-item', (_e, raw) => {
+  const item = markets.normalizeItem(raw);
+  if (!item) return config;
   const k = markets.keyOf(item);
   if (!config.items.some((i) => markets.keyOf(i) === k)) {
     config.items.push(item);
@@ -735,7 +747,9 @@ ipcMain.handle('remove-item', (_e, item) => {
   return config;
 });
 
-ipcMain.handle('get-chart', async (_e, { item, range }) => {
+ipcMain.handle('get-chart', async (_e, { item: raw, range } = {}) => {
+  const item = markets.normalizeItem(raw);
+  if (!item) return { points: [], error: 'ligne inconnue' };
   try {
     return { ...(await markets.getChart(item, range)), error: null };
   } catch (err) {
@@ -757,7 +771,9 @@ ipcMain.handle('reset-net-totals', () => {
   return config.netTotals;
 });
 
-ipcMain.handle('open-weather-map', () => shell.openExternal(weather.mapUrl(config.weatherSite)));
+ipcMain.handle('open-weather-map', () => {
+  if (config.weatherSite) shell.openExternal(weather.mapUrl(config.weatherSite));
+});
 
 ipcMain.handle('set-night', (_e, { enabled, dim } = {}) => {
   const level = Number(dim);

@@ -54,10 +54,10 @@ function fmtBytes(b) {
 
 function fmtRate(bytesPerSec) {
   if (bytesPerSec == null) return ['--', ''];
-  const bits = bytesPerSec;
-  if (bits >= 1e6) return [(bits / 1e6).toFixed(1), 'MB/s'];
-  if (bits >= 1e3) return [(bits / 1e3).toFixed(0), 'kB/s'];
-  return [bits.toFixed(0), 'B/s'];
+  const b = bytesPerSec;
+  if (b >= 1e6) return [(b / 1e6).toFixed(1), 'MB/s'];
+  if (b >= 1e3) return [(b / 1e3).toFixed(0), 'kB/s'];
+  return [b.toFixed(0), 'B/s'];
 }
 
 /* ---------------- tableau des marches ---------------- */
@@ -291,9 +291,10 @@ window.dash.onSys((s) => {
     }
   });
   $('cpuAvg').textContent = `${s.cpu.avg.toFixed(0)}%`;
-  // "Intel(R) Core(TM) i9-14900KF" -> "i9-14900KF" : a 24 px la marque deborde.
+  // "Intel(R) Core(TM) i9-14900KF" -> "i9-14900KF", "AMD Ryzen 9 7950X 16-Core
+  // Processor" -> "Ryzen 9 7950X" : a 24 px la marque deborde.
   $('cpuModel').textContent = (s.cpuModel || '')
-    .replace(/\(R\)|\(TM\)|CPU|Processor|Intel|AMD|Core/gi, '')
+    .replace(/\b\d+-Core\b|\(R\)|\(TM\)|CPU|Processor|Intel|AMD|Core/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
   $('cpuCount').textContent = `${s.cpu.per.length} threads`;
@@ -418,6 +419,9 @@ function drawNetSpark() {
 
 let chartItem = null;
 let chartRange = '1w';
+// Numero de la derniere demande : une reponse plus lente d'une periode
+// precedente ne doit pas remplacer la courbe affichee.
+let chartReq = 0;
 
 function drawChart(points, up) {
   const area = $('chartArea');
@@ -474,8 +478,10 @@ function drawChart(points, up) {
 
 async function loadChart() {
   if (!chartItem) return;
+  const req = ++chartReq;
   $('chartArea').innerHTML = '<div class="chartMsg">chargement...</div>';
   const res = await window.dash.getChart(chartItem, chartRange);
+  if (req !== chartReq) return;
   if (res.error) {
     $('chartArea').replaceChildren(el('div', 'chartMsg', `erreur : ${res.error}`));
     return;
@@ -657,7 +663,9 @@ window.dash.onNight(({ on, dim, from, until, current }) => {
   const span = from ? `${hhmm(from)} → ${until ? hhmm(until) : '?'}` : `jusqu'à ${hhmm(until)}`;
   $('nightHint').textContent = until || from
     ? `${current ? 'Nuit en cours' : 'Prochaine nuit'} : ${span}, d'après le soleil à ${config.weatherSite?.label || 'la ville météo'}.`
-    : 'Heures du soleil pas encore connues (météo indisponible).';
+    : config.weatherSite
+      ? 'Heures du soleil pas encore connues (météo indisponible).'
+      : 'Choisir une ville météo : la nuit suit son coucher et son lever du soleil.';
 });
 
 $('nightTgl').addEventListener('change', async (e) => {
@@ -789,6 +797,20 @@ window.addEventListener('resize', () => {
 
 const STORM_CLASS = { faible: '', possible: 'warn', fort: 'alert' };
 
+// Vrai tant qu'aucune ville meteo n'a ete choisie (premier lancement).
+let needsSite = false;
+
+/** Carte meteo sans ville : elle invite a en choisir une. */
+function renderNoSite() {
+  $('wIcon').hidden = true;
+  $('wSite').textContent = '--';
+  $('wTemp').textContent = '--';
+  $('wDesc').textContent = 'Choisir une ville';
+  $('wFeels').textContent = 'Cliquer pour rechercher';
+  for (const id of ['wMinMax', 'wRain', 'wWind', 'wStorm']) $(id).textContent = '--';
+  $('wStorm').className = 'wVal';
+}
+
 function renderWeather(d) {
   const icon = $('wIcon');
   icon.src = `icons/weather/${d.icon}.svg`;
@@ -808,12 +830,23 @@ function renderWeather(d) {
   storm.className = `wVal ${STORM_CLASS[d.storm]}`;
 }
 
-window.dash.onWeather(({ data, error }) => {
-  if (data) renderWeather(data);
+window.dash.onWeather(({ data, error, needsSite: noSite }) => {
+  needsSite = !!noSite;
+  $('weather').title = needsSite ? 'Choisir la ville météo' : 'Ouvrir la carte météo';
+  if (needsSite) renderNoSite();
+  else if (data) renderWeather(data);
   else if (error) $('wDesc').textContent = 'Météo indisponible';
 });
 
-const openWeather = () => window.dash.openWeatherMap();
+async function openWeather() {
+  if (!needsSite) {
+    window.dash.openWeatherMap();
+    return;
+  }
+  await openSettings();
+  $('siteSearch').scrollIntoView({ block: 'center' });
+  $('siteSearch').focus();
+}
 $('weather').addEventListener('click', openWeather);
 $('weather').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openWeather(); }

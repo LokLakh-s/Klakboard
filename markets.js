@@ -2,7 +2,8 @@
  * Sources de marche, toutes gratuites et sans cle API.
  * Tout part du main process : Yahoo n'envoie aucun header CORS.
  *
- *   crypto  spot+var : Binance  /ticker/24hr   (1 appel pour toutes les paires)
+ *   crypto  spot+var : Binance  /ticker/24hr   (1 appel pour toutes les paires,
+ *                      paire par paire si l'une d'elles est refusee)
  *   crypto  courbe   : Binance  /klines
  *   metaux  spot     : gold-api.com           (vrai spot, pas le future)
  *   metaux  var      : Yahoo spark GC=F...    (1 appel groupe avec le forex)
@@ -15,7 +16,9 @@ const { version } = require('./package.json');
 
 const UA = `Klakboard/${version}`; // Yahoo bloque curl/python, pas les UA custom
 const YQ = 'https://query1.finance.yahoo.com';
-const BINANCE = 'https://api.binance.com/api/v3';
+// Domaine des seules donnees de marche publiques : contrairement a api.binance.com,
+// il n'est pas bloque dans les pays ou Binance n'opere pas.
+const BINANCE = 'https://data-api.binance.vision/api/v3';
 
 /* ---------------- catalogue metaux ---------------- */
 
@@ -51,7 +54,11 @@ async function getJson(url, opts = {}) {
     if (err.name === 'TimeoutError') throw new Error(`délai dépassé sur ${host}`);
     throw new Error(`${host} injoignable`);
   }
-  if (!res.ok) throw new Error(`HTTP ${res.status} sur ${host}`);
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status} sur ${host}`);
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
 
@@ -71,10 +78,25 @@ function zipYahoo(result) {
 
 /* ---------------- spot + variation 24 h ---------------- */
 
-async function fetchCrypto(items, out) {
+async function fetchCrypto(items, out, errors) {
   if (!items.length) return;
   const symbols = JSON.stringify(items.map((i) => i.binance));
-  const data = await getJson(`${BINANCE}/ticker/24hr?symbols=${encodeURIComponent(symbols)}`);
+  let data;
+  try {
+    data = await getJson(`${BINANCE}/ticker/24hr?symbols=${encodeURIComponent(symbols)}`);
+  } catch (err) {
+    // Une seule paire inconnue (retiree de la cote) fait refuser tout le lot
+    // (HTTP 400) : on repasse paire par paire pour que les autres restent a jour.
+    if (err.status !== 400 || items.length === 1) throw err;
+    data = [];
+    await Promise.all(items.map(async (it) => {
+      try {
+        data.push(await getJson(`${BINANCE}/ticker/24hr?symbol=${encodeURIComponent(it.binance)}`));
+      } catch (e) {
+        errors.push(`Binance (${it.symbol}/${it.vs}) : ${e.message}`);
+      }
+    }));
+  }
   const bySym = new Map(data.map((d) => [d.symbol, d]));
   for (const it of items) {
     const d = bySym.get(it.binance);
@@ -140,7 +162,7 @@ async function getQuotes(items) {
   const fx = items.filter((i) => i.kind === 'fx');
 
   await Promise.all([
-    fetchCrypto(crypto, out).catch((err) => errors.push(`Binance : ${err.message}`)),
+    fetchCrypto(crypto, out, errors).catch((err) => errors.push(`Binance : ${err.message}`)),
     fetchYahooSpark([...metals, ...fx], out).catch((err) => errors.push(`Yahoo : ${err.message}`)),
   ]);
   await overlayMetalSpot(metals, out, errors);
@@ -193,7 +215,7 @@ function clip(points, ms) {
 
 async function chartCrypto(item, range) {
   const [interval, limit] = periodOf(range).binance;
-  const url = `${BINANCE}/klines?symbol=${item.binance}&interval=${interval}&limit=${limit}`;
+  const url = `${BINANCE}/klines?symbol=${encodeURIComponent(item.binance)}&interval=${interval}&limit=${limit}`;
   const rows = await getJson(url);
   return rows.map((k) => [k[0], parseFloat(k[4])]); // openTime ms, close
 }
@@ -262,7 +284,7 @@ async function sparkYahoo(items, out) {
 async function sparkCrypto(items, out) {
   await Promise.all(items.map(async (it) => {
     try {
-      const rows = await getJson(`${BINANCE}/klines?symbol=${it.binance}&interval=15m&limit=48`);
+      const rows = await getJson(`${BINANCE}/klines?symbol=${encodeURIComponent(it.binance)}&interval=15m&limit=48`);
       out[keyOf(it)] = rows.map((k) => [k[0], parseFloat(k[4])]);
     } catch {
       /* courbe absente pour cette paire, les autres restent */
@@ -325,11 +347,33 @@ const FX_CURRENCIES = [
   'ZAR', 'INR', 'KRW', 'RUB', 'THB', 'ILS',
 ];
 
+// Lettres et chiffres de toute ecriture : Binance cote aussi « 币安人生USDT ».
+const SYMBOL_RE = /^[\p{L}\p{N}]{1,20}$/u;
+
+/**
+ * Ligne suivie reduite a ses champs connus, ou null si elle est invalide. Les
+ * lignes arrivent de la page : elles finissent dans la config et dans des URL.
+ */
+function normalizeItem(it) {
+  if (!it || typeof it !== 'object') return null;
+  if (it.kind === 'metal') return METALS[it.code] ? { kind: 'metal', code: it.code } : null;
+  if (it.kind === 'fx') {
+    const ok = FX_CURRENCIES.includes(it.from) && FX_CURRENCIES.includes(it.to) && it.from !== it.to;
+    return ok ? { kind: 'fx', from: it.from, to: it.to } : null;
+  }
+  if (it.kind === 'crypto') {
+    const ok = [it.symbol, it.vs, it.binance].every((s) => typeof s === 'string' && SYMBOL_RE.test(s));
+    return ok ? { kind: 'crypto', symbol: it.symbol, vs: it.vs, binance: it.binance } : null;
+  }
+  return null;
+}
+
 module.exports = {
   METALS,
   FX_CURRENCIES,
   PERIODS,
   keyOf,
+  normalizeItem,
   getQuotes,
   getChart,
   getSparks,

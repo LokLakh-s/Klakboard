@@ -8,8 +8,6 @@
  * CAPE = energie convective disponible : indicateur du risque d'orage.
  */
 
-const DEFAULT_SITE = { label: 'Paris (75)', lat: 48.8566, lon: 2.3522, timezone: 'Europe/Paris' };
-
 const OPEN_METEO = 'https://api.open-meteo.com/v1/forecast';
 const GEOCODING = 'https://geocoding-api.open-meteo.com/v1/search';
 
@@ -59,7 +57,7 @@ function windDir(deg) {
   return COMPASS[Math.round(deg / 45) % 8];
 }
 
-async function getWeather(site = DEFAULT_SITE) {
+async function getWeather(site) {
   const params = new URLSearchParams({
     latitude: String(site.lat),
     longitude: String(site.lon),
@@ -107,7 +105,7 @@ async function getWeather(site = DEFAULT_SITE) {
 
 /**
  * Libelle court d'une ville : departement en France (« Paris (75) », trois
- * chiffres outre-mer), code pays ailleurs (« Paris (BE) »).
+ * chiffres outre-mer), code pays ailleurs (« Paris (US) »).
  */
 function placeLabel(r) {
   const postcode = (r.postcodes || [])[0];
@@ -148,4 +146,4 @@ function nightWindow(now, sun) {
   return { on: now >= today.set, from: today.set, until };
 }
 
-module.exports = { getWeather, searchPlaces, placeLabel, mapUrl, nightWindow, iconName, WMO, DEFAULT_SITE };
+module.exports = { getWeather, searchPlaces, placeLabel, mapUrl, nightWindow, iconName, WMO };
