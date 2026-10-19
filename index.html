@@ -98,6 +98,12 @@
             <div class="netRate" id="netUp">--</div>
             <div class="netUnit" id="netUpU">MB/s</div>
           </div>
+          <!-- Round trip to 9.9.9.9, see platform/ping.js. -->
+          <div class="netCol" id="pingCol" data-i18n-title="sys.pingTitle" title="Ping to 9.9.9.9 (Quad9)">
+            <div class="netArrow ping">PING</div>
+            <div class="netRate" id="pingVal">--</div>
+            <div class="netUnit">ms</div>
+          </div>
         </div>
         <div class="netSpark" id="netSpark"></div>
         <canvas class="cardChart" id="netChart"></canvas>

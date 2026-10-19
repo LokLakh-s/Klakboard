@@ -4,7 +4,7 @@
  *
  * Two tiers: every second for 10 minutes, and 10-second averages for an hour.
  * Values are Float32Array rings; a missing value (no GPU, silent network
- * counters) is NaN. 32 cores x 960 points is about 120 kB.
+ * counters, lost ping) is NaN. 32 cores x 960 points is about 120 kB.
  */
 
 const FINE_LEN = 600;      // 10 min at 1 s
@@ -12,7 +12,7 @@ const COARSE_STEP = 10;    // fine samples per coarse point
 const COARSE_LEN = 360;    // 1 h at 10 s
 
 // Series kept besides the per-core loads.
-const SERIES = ['cpu', 'ram', 'gpu', 'gpuMem', 'gpuTemp', 'down', 'up'];
+const SERIES = ['cpu', 'ram', 'gpu', 'gpuMem', 'gpuTemp', 'down', 'up', 'ping'];
 
 class Ring {
   constructor(size, Type = Float32Array) {
@@ -80,6 +80,7 @@ function createHistory() {
       gpuTemp: num(sample.gpu?.temp),
       down: num(sample.net.rate?.down),
       up: num(sample.net.rate?.up),
+      ping: num(sample.ping),
     };
     write(fine, point);
     pending.push(point);
@@ -102,7 +103,7 @@ function createHistory() {
   /**
    * History over `range` ('1m', '5m', '10m' at 1 s; '1h' at 10 s), oldest first:
    * { t: Float64Array (ms), cores: Float32Array[], cpu, ram, gpu, gpuMem, gpuTemp,
-   *   down, up: Float32Array }.
+   *   down, up, ping: Float32Array }.
    */
   function get(range) {
     const [tier, n] = {

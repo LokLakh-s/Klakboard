@@ -9,18 +9,18 @@ const { spawn } = require('child_process');
  * Starts `cmd` and calls `onLine` for each stdout line. The process is
  * restarted with a growing delay when it stops; `onLine` returning true (a line
  * understood) resets that delay. A missing command (ENOENT) is not retried:
- * `onMissing` is called instead.
+ * `onMissing` is called instead. `env` replaces the environment of the process.
  *
  * @returns {{ stop(): void }}
  */
-function spawnLines(cmd, args, { onLine, onMissing, minDelay = 2000, maxDelay = 60000 } = {}) {
+function spawnLines(cmd, args, { onLine, onMissing, env, minDelay = 2000, maxDelay = 60000 } = {}) {
   let proc = null;
   let timer = null;
   let stopped = false;
   let delay = minDelay;
 
   function launch() {
-    const p = spawn(cmd, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    const p = spawn(cmd, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'], env });
     proc = p;
     p.stdout.setEncoding('utf8');
     let buf = '';

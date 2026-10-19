@@ -418,6 +418,9 @@ html, body {
 .netArrow { font-size: 0.8rem; line-height: 1.1; }
 .netArrow.down { color: var(--up); }
 .netArrow.up { color: var(--accent); }
+.netArrow.ping { color: var(--warn); font-weight: 700; letter-spacing: .4px; }
+.netRate.warn { color: var(--warn); }
+.netRate.alert { color: var(--down); }
 .netRate {
   font-size: 1.7rem; font-weight: 700; line-height: 1.05;
   font-variant-numeric: tabular-nums;

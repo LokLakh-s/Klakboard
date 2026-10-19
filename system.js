@@ -6,10 +6,12 @@
  *  GPU      : nvidia-smi when installed, otherwise the platform source
  *             (Windows performance counters, amdgpu sysfs, macOS ioreg)
  *  Network  : platform source (platform/<os>.js)
+ *  Ping     : the system's ping command (platform/ping.js)
  */
 
 const os = require('os');
 const nvidia = require('./platform/nvidia');
+const ping = require('./platform/ping');
 
 const PLATFORM = {
   win32: () => require('./platform/win32'),
@@ -21,6 +23,8 @@ const GPU_MS = 2000;
 const TICK_MS = 1000;
 // A GPU sample older than this is not shown (source stopped answering).
 const GPU_STALE_MS = 5 * GPU_MS;
+// No answer for this long: the ping shows as missing rather than frozen.
+const PING_STALE_MS = 3000;
 
 /* ---------------- CPU ---------------- */
 
@@ -90,6 +94,14 @@ function onNetCounters(rx, tx) {
   prevNet = { rx, tx, at };
 }
 
+/* ---------------- ping ---------------- */
+
+let pingState = null;   // { ms, at }
+
+const onPing = (ms) => { pingState = { ms, at: Date.now() }; };
+
+const currentPing = () => (pingState && Date.now() - pingState.at <= PING_STALE_MS ? pingState.ms : null);
+
 /* ---------------- loop ---------------- */
 
 let tickTimer;
@@ -102,6 +114,7 @@ function start(onSample) {
     sources.push(PLATFORM.net.start(onNetCounters, TICK_MS));
     if (PLATFORM.ram) sources.push(PLATFORM.ram.start(GPU_MS));
   }
+  sources.push(ping.start(onPing));
   // nvidia-smi first; the platform source only when it is not installed.
   sources.push(nvidia.start(onGpu, () => {
     if (running && PLATFORM?.gpu) sources.push(PLATFORM.gpu.start(onGpu, GPU_MS));
@@ -115,6 +128,7 @@ function start(onSample) {
       ram: ramUsage(),
       gpu: currentGpu(),
       net: { rate: netRate, delta: netDelta },
+      ping: currentPing(),   // ms, or null
       cpuModel: CPU_MODEL,
     };
     // Consume the delta: it must be counted only once.

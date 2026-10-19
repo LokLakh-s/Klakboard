@@ -94,6 +94,7 @@
       'sys.na': 'n/a',
       'sys.peak': 'peak {value}',
       'sys.resetConfirm': 'sure?',
+      'sys.pingTitle': 'Ping to 9.9.9.9 (Quad9), every second',
 
       'detail.open': 'Show the history',
       'detail.total': 'Total',
@@ -103,6 +104,7 @@
       'detail.temp': 'Temperature',
       'detail.down': 'Download',
       'detail.up': 'Upload',
+      'detail.ping': 'Ping to 9.9.9.9',
       'detail.now': 'now',
       'detail.avg': 'average',
       'detail.peak': 'peak',
@@ -248,6 +250,7 @@
       'sys.na': 'n/a',
       'sys.peak': 'pic {value}',
       'sys.resetConfirm': 'sûr ?',
+      'sys.pingTitle': 'Ping vers 9.9.9.9 (Quad9), chaque seconde',
 
       'detail.open': 'Voir l\'historique',
       'detail.total': 'Total',
@@ -257,6 +260,7 @@
       'detail.temp': 'Température',
       'detail.down': 'Réception',
       'detail.up': 'Envoi',
+      'detail.ping': 'Ping vers 9.9.9.9',
       'detail.now': 'actuel',
       'detail.avg': 'moyenne',
       'detail.peak': 'pic',

@@ -406,3 +406,35 @@ test('history: rings, 10-second averages, missing values', () => {
   assert.equal(h.get('1m').cores.length, 4, 'core count change restarts the history');
   assert.equal(createHistory().get('10m').t.length, 0);
 });
+
+test('ping: reply lines in several Windows languages, macOS and Linux', () => {
+  const { parseWindowsLine, parseUnixLine } = require('../platform/ping');
+  assert.equal(parseWindowsLine('Reply from 9.9.9.9: bytes=32 time=12ms TTL=57'), 12);
+  assert.equal(parseWindowsLine('Réponse de 9.9.9.9 : octets=32 temps=12 ms TTL=57'), 12);
+  assert.equal(parseWindowsLine('Antwort von 9.9.9.9: Bytes=32 Zeit=8ms TTL=57'), 8);
+  assert.equal(parseWindowsLine('Ответ от 9.9.9.9: число байт=32 время=15мс TTL=57'), 15);
+  assert.equal(parseWindowsLine('来自 9.9.9.9 的回复: 字节=32 时间=21ms TTL=57'), 21);
+  assert.equal(parseWindowsLine('Reply from 192.168.1.1: bytes=32 time<1ms TTL=64'), 1);
+  for (const other of ['Pinging 9.9.9.9 with 32 bytes of data:', 'Request timed out.', 'Délai d\'attente de la demande dépassé.',
+    '    Minimum = 8ms, Maximum = 12ms, Average = 10ms', 'Reply from 10.0.0.1: Destination host unreachable.']) {
+    assert.equal(parseWindowsLine(other), null, other);
+  }
+  assert.equal(parseUnixLine('64 bytes from 9.9.9.9: icmp_seq=1 ttl=57 time=8.85 ms'), 8.85);
+  assert.equal(parseUnixLine('64 bytes from 9.9.9.9: seq=0 ttl=57 time=12.345 ms'), 12.345);
+  assert.equal(parseUnixLine('64 bytes from 9.9.9.9: icmp_seq=0 ttl=57 time=110 ms'), 110);
+  for (const other of ['PING 9.9.9.9 (9.9.9.9): 56 data bytes', 'Request timeout for icmp_seq 3',
+    'round-trip min/avg/max/stddev = 8.1/9.2/12.0/1.1 ms', 'rtt min/avg/max/mdev = 8.1/9.2/12.0/1.1 ms']) {
+    assert.equal(parseUnixLine(other), null, other);
+  }
+});
+
+test('history: ping kept, a lost answer as a gap', () => {
+  const { createHistory } = require('../history');
+  const h = createHistory();
+  const base = { cpu: { per: [1], avg: 1 }, ram: { pct: 1 }, gpu: null, net: { rate: null } };
+  [12, null, 14].forEach((ping, i) => h.push({ ...base, ping }, 1000 * i));
+  const m = h.get('1m');
+  assert.equal(m.ping[0], 12);
+  assert.ok(Number.isNaN(m.ping[1]));
+  assert.equal(m.ping[2], 14);
+});

@@ -393,6 +393,12 @@ function renderSys(s) {
   const [ttv, ttu] = fmtBytes(s.totals.tx);
   $('totDown').textContent = `↓ ${trv} ${tru}`;
   $('totUp').textContent = `↑ ${ttv} ${ttu}`;
+
+  // Ping: null when the last answers are missing, or without a ping command.
+  const ping = $('pingVal');
+  ping.textContent = fmtMs(s.ping, false);
+  ping.classList.toggle('warn', s.ping >= 100 && s.ping < 250);
+  ping.classList.toggle('alert', s.ping >= 250);
 }
 
 /* ---------------- throughput history ---------------- */
@@ -858,6 +864,12 @@ const fmtPct = (v) => (Number.isFinite(v) ? `${num(v, 0)}%` : '--');
 const fmtRateText = (v) => (Number.isFinite(v) ? fmtRate(v).join(' ') : '--');
 const fmtMiB = (v) => (Number.isFinite(v) ? `${fmtMem(v * 2 ** 20)} ${units()[3]}` : '--');
 const fmtTemp = (v) => (Number.isFinite(v) ? `${num(v, 0)}°C` : '--');
+/** Round trip in ms: one decimal under 10 ms (Windows only gives whole ms). */
+function fmtMs(v, unit = true) {
+  if (v == null || !Number.isFinite(v)) return '--';
+  const text = num(v, v < 10 && v % 1 ? 1 : 0);
+  return unit ? `${text} ms` : text;
+}
 const lastFinite = (a) => { for (let i = a.length - 1; i >= 0; i--) if (Number.isFinite(a[i])) return a[i]; return NaN; };
 const anyFinite = (a) => a.some(Number.isFinite);
 function stats(a) {
@@ -894,10 +906,14 @@ function detailCharts(kind, data) {
       anyFinite(data.gpuTemp) && { label: t('detail.temp'), fmt: fmtTemp, max: 100, series: [{ values: data.gpuTemp, color: p.down }] },
     ].filter(Boolean);
   }
-  return [{
-    label: `${t('detail.down')} / ${t('detail.up')}`, fmt: fmtRateText, floor: 64000,
-    series: [{ values: data.down, color: p.up, fill: true }, { values: data.up, color: p.accent }],
-  }];
+  return [
+    {
+      label: `${t('detail.down')} / ${t('detail.up')}`, fmt: fmtRateText, floor: 64000,
+      series: [{ values: data.down, color: p.up, fill: true }, { values: data.up, color: p.accent }],
+    },
+    // No curve at all without a ping command or when ICMP is blocked.
+    anyFinite(data.ping) && { label: t('detail.ping'), fmt: fmtMs, floor: 20, series: [{ values: data.ping, color: p.warn, fill: true }] },
+  ].filter(Boolean);
 }
 
 function openDetail(kind) {
@@ -1010,15 +1026,16 @@ function drawDetail(defs, data, pointer) {
     c.now.textContent = d.series.map((s) => d.fmt(hover != null ? s.values[hover] : lastFinite(s.values))).join(' / ');
   });
   if (detail.kind === 'net' && detail.stats) {
-    const line = (arrow, label, values) => {
+    const line = (arrow, label, values, fmt = fmtRateText) => {
       const st = stats(values);
-      const span = el('span', null, `${arrow} ${t('detail.labelValue', { label, value: '' }).trimEnd()} `);
+      const span = el('span', null, `${arrow ? `${arrow} ` : ''}${t('detail.labelValue', { label, value: '' }).trimEnd()} `);
       [[t('detail.now'), lastFinite(values)], [t('detail.avg'), st.avg], [t('detail.peak'), st.max]].forEach(([name, v], i) => {
-        span.append(`${i ? ' · ' : ''}${name} `, el('b', null, fmtRateText(v)));
+        span.append(`${i ? ' · ' : ''}${name} `, el('b', null, fmt(v)));
       });
       return span;
     };
-    detail.stats.replaceChildren(line('↓', t('detail.down'), data.down), line('↑', t('detail.up'), data.up));
+    detail.stats.replaceChildren(line('↓', t('detail.down'), data.down), line('↑', t('detail.up'), data.up),
+      ...(anyFinite(data.ping) ? [line('', 'Ping', data.ping, fmtMs)] : []));
   }
   if (detail.cores) {
     const p = palette();

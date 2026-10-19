@@ -22,9 +22,12 @@ test(`system metrics on ${process.platform}`, { timeout: 20000 }, async () => {
   assert.ok(last.ram.total > 0 && last.ram.free > 0 && last.ram.free <= last.ram.total, JSON.stringify(last.ram));
   assert.ok(last.net.rate, 'network counters never came');
   assert.ok(last.net.rate.down >= 0 && last.net.rate.up >= 0);
+  // GitHub-hosted runners drop ICMP: the ping only has to be a time or nothing.
+  const pings = samples.map((x) => x.ping).filter((v) => v != null);
+  assert.ok(pings.every((v) => v > 0 && v < 10000), JSON.stringify(pings));
   if (last.gpu) {
     assert.equal(typeof last.gpu.name, 'string');
     assert.ok(last.gpu.util == null || (last.gpu.util >= 0 && last.gpu.util <= 100), JSON.stringify(last.gpu));
   }
-  console.log(JSON.stringify({ ram: last.ram, net: last.net.rate, gpu: last.gpu }));
+  console.log(JSON.stringify({ ram: last.ram, net: last.net.rate, gpu: last.gpu, pings }));
 });
