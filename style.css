@@ -132,6 +132,8 @@ html, body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .dateDay { text-transform: capitalize; }
+/* Weekday and date on one line when the bar has room for it (renderer.js). */
+.dateText.oneLine { flex-direction: row; align-items: baseline; gap: 0.3em; }
 
 .clockTime {
   flex: 0 0 auto; margin-left: auto;
@@ -168,10 +170,10 @@ html, body {
 
 /* ---- weather: fills the space left under the badges ----
    Its height comes from the remaining space (container-type: size), not from
-   its content: with three rows of badges or a high zoom, the card compacts
-   instead of turning the badges into a scrolling area. */
+   its content: with three rows of badges or a high zoom, the card compacts.
+   When even 12rem are not left, the whole dashboard shrinks (renderer.js). */
 .weather {
-  flex: 1 1 0; min-height: 9rem;
+  flex: 1 1 0; min-height: 12rem;
   container-type: size;
   overflow: hidden;
   display: flex; flex-direction: column; gap: 0.35rem;
@@ -371,14 +373,18 @@ html, body {
   padding: 0.25rem 0.45rem 0.3rem;
   min-width: 0;
 }
-/* CPU and NETWORK absorb the free height, whatever the zoom. */
-.card.grow { flex: 1 1 0; min-height: 0; }
+/* CPU and NETWORK absorb the free height, whatever the zoom; no card gets
+   smaller than its content (the column shrinks instead, see renderer.js). */
+.card.grow { flex: 1 1 0; }
 /* A click opens the card's history. */
 .card[data-detail] { cursor: pointer; transition: background .12s; }
 .card[data-detail]:hover, .card[data-detail]:focus-visible { background: var(--hover); outline: none; }
 
 /* History curves inside the cards: large screens only. */
 .cardChart { display: none; width: 100%; min-height: 0; margin-top: 0.3rem; }
+/* Curves take the room left to them: their drawing size (canvas, SVG) must not
+   count as content, or a card could no longer shrink below its last size. */
+.cardChart, .wChart, .netSpark, .sdChart canvas, .coreCell canvas { contain: size; }
 
 .cHead {
   display: flex; justify-content: space-between; align-items: baseline;
@@ -405,7 +411,7 @@ html, body {
 /* --- per-core bars --- */
 .cores {
   display: flex; align-items: flex-end; gap: 1px;
-  flex: 1 1 auto; min-height: 1.8rem;
+  flex: 1 1 auto; min-height: 1.4rem;
 }
 .core {
   flex: 1 1 0; min-width: 0;
@@ -457,7 +463,7 @@ html, body {
 .netUnit { font-size: 1.15rem; color: var(--faint); letter-spacing: .3px; line-height: 1.15; }
 
 /* Throughput history: takes the card's remaining height. */
-.netSpark { flex: 1 1 auto; min-height: 1.4rem; margin-top: 0.2rem; position: relative; }
+.netSpark { flex: 1 1 auto; min-height: 1.8rem; margin-top: 0.2rem; position: relative; }
 .netSpark svg { width: 100%; height: 100%; display: block; }
 
 .purge {
@@ -473,12 +479,13 @@ html, body {
 /* ================= screen shapes =================
  * The layout above is for landscape screens close to 3:2 (960 x 640,
  * 1024 x 600, 800 x 480). Bar screens (1920 x 480, 2560 x 720, 1280 x 400) and
- * portrait screens get their own arrangement; zoom keeps the aspect ratio, so
- * the mode does not change with it.
+ * portrait screens get their own arrangement. Zoom keeps the aspect ratio, so
+ * the mode only changes with it around the 1000 px a bar layout needs.
  */
 
-/* Bar: badges | weather | system, side by side; the badges share the height. */
-@media (min-aspect-ratio: 12/5) {
+/* Bar: badges | weather | system, side by side; the badges share the height.
+   Under 1000 px wide, three columns get too narrow: landscape layout instead. */
+@media (min-aspect-ratio: 12/5) and (min-width: 1000px) {
   .app {
     display: grid;
     grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.55fr) minmax(0, 1.3fr);
@@ -497,7 +504,7 @@ html, body {
     grid-column: 3; grid-row: 1 / 3;
     display: grid;
     grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(min-content, 1fr) minmax(min-content, 1fr);
     grid-template-areas: "cpu ram net" "cpu gpu net";
     border-left: 1px solid var(--line);
   }
@@ -512,13 +519,13 @@ html, body {
 @media (max-aspect-ratio: 4/5) {
   .app { flex-direction: column; }
   .markets { flex: 0 0 auto; border-right: none; border-bottom: 1px solid var(--line); }
-  .weather { flex: 0 0 auto; height: clamp(11rem, 22vh, 19rem); }
+  /* Its content's height: the system cards below take what is left. */
+  .weather { flex: 0 0 auto; container-type: inline-size; }
   .sys {
     flex: 1 1 auto; min-height: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    /* The network card keeps its full content; the CPU bars shrink first. */
-    grid-template-rows: minmax(0, 1fr) auto minmax(min-content, 1fr);
+    grid-template-rows: minmax(min-content, 1fr) auto minmax(min-content, 1fr);
     grid-template-areas: "cpu cpu" "ram gpu" "net net";
   }
   .card.cpu { grid-area: cpu; }
@@ -531,7 +538,7 @@ html, body {
 
 /* Narrow cards (bar and portrait): footers and headers wrap instead of
    cutting their text. */
-@media (min-aspect-ratio: 12/5), (max-aspect-ratio: 4/5) {
+@media (min-aspect-ratio: 12/5) and (min-width: 1000px), (max-aspect-ratio: 4/5) {
   .cFoot { flex-wrap: wrap; column-gap: 0.6rem; row-gap: 0; }
   .cHead { flex-wrap: wrap; }
 }

@@ -81,6 +81,130 @@ function fmtRate(bytesPerSec) {
 /** Memory in binary gigabytes, as the OS task managers show it. */
 const fmtMem = (bytes) => num(bytes / 2 ** 30, 1);
 
+/* ---------------- fitting small windows ---------------- */
+
+/*
+ * A small window or a high zoom can leave the dashboard without room for its
+ * content. Rather than letting texts get cut or overlap, it then shrinks as a
+ * whole with CSS zoom: container queries see the room it would have at full
+ * size, so it shows the layout of a larger window, smaller. Floor: base text of
+ * FIT_FLOOR_PX on screen, the zoom setting being given up first.
+ *
+ * The top bar fits on its own (a narrow column in the bar layout): the date on
+ * one line when there is room, then two, then smaller.
+ */
+const FIT_FLOOR_PX = 10;
+const TOP_BAR_FLOOR = 0.6;   // its texts are the largest ones
+// Free width (rem) wanted between the one-line date and the time.
+const ONE_LINE_ROOM = 1.5;
+// Rows of badges that must show; more may scroll.
+const BADGE_ROWS_SHOWN = 3;
+// What must not overflow, be cut by an ellipsis or spill out. Rows holding
+// weather icons are checked across only: the icons stick out above and below
+// on purpose (their drawing only fills the middle of their box).
+const SYS_CHECKS = '.sys, .cHead, .cFoot, .cFoot span, .netLive, .netCol, .miniRow';
+const WEATHER_CHECKS = '.weather, .wHead, .wStats, .wDesc, .wLbl, .wVal';
+const FIT_CHECKS = `${WEATHER_CHECKS}, ${SYS_CHECKS}`;
+const FIT_CHECKS_ACROSS = '.wMain, .wAstroRow';
+// The weather card, whose texts are the largest, may first shrink alone.
+const WEATHER_OWN_ZOOMS = [1, 0.9, 0.8];
+
+const app = document.querySelector('.app');
+
+/** Content larger than the box: cut by an ellipsis or overflow, or spilling out. */
+const cutAcross = (e) => e.scrollWidth > e.clientWidth;
+const cut = (e) => cutAcross(e) || e.scrollHeight > e.clientHeight + 1;
+const noneCut = (selector, test = cut) => ![...app.querySelectorAll(selector)].some(test);
+
+/** The first BADGE_ROWS_SHOWN rows of badges fit in their area (badges scrolled by hand: not checked). */
+function badgesShown() {
+  const area = $('mScroll');
+  const badges = area.querySelectorAll('.badge');
+  if (!badges.length || area.scrollTop > 0) return true;
+  const last = badges[Math.min(badges.length, BADGE_ROWS_SHOWN * 3) - 1];
+  return last.getBoundingClientRect().bottom <= area.getBoundingClientRect().bottom + 1;
+}
+
+/** Largest zoom of `box` between `floor` and 1 at which `fits()` holds; the floor when none does. */
+function fitZoom(box, floor, fits) {
+  const at = (z) => {
+    box.style.zoom = z === 1 ? '' : String(z);
+    return fits();
+  };
+  if (at(1)) return;
+  let lo = floor;
+  let hi = 1;
+  for (let i = 0; i < 6; i++) {
+    const mid = (lo + hi) / 2;
+    if (at(mid)) lo = mid;
+    else hi = mid;
+  }
+  at(lo);
+}
+
+/** Weekday and date on one line when there is room, on two otherwise, the bar shrunk when even that does not fit. */
+function fitTopBar() {
+  const bar = document.querySelector('.topBar');
+  const date = document.querySelector('.dateText');
+  const whole = () => !cut(bar) && !cut(date) && !cut($('dateDay')) && !cut($('dateFull'));
+  bar.style.zoom = '';
+  date.classList.add('oneLine');
+  // The menu button sits in the free space, invisible until hovered.
+  const free = $('clockTime').getBoundingClientRect().left - $('menuBtn').getBoundingClientRect().right
+    - parseFloat(getComputedStyle(bar).columnGap) * (app.currentCSSZoom || 1);
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) * (app.currentCSSZoom || 1);
+  if (whole() && free >= ONE_LINE_ROOM * rem) return;
+  date.classList.remove('oneLine');
+  fitZoom(bar, TOP_BAR_FLOOR, whole);
+}
+
+/**
+ * Moon and sun beside the weather icon when they fit there, on their own line
+ * otherwise; the card shrunk a little alone when that is still not enough.
+ */
+function fitWeather() {
+  const w = $('weather');
+  for (const z of WEATHER_OWN_ZOOMS) {
+    w.style.zoom = z === 1 ? '' : String(z);
+    w.classList.remove('astroBelow');
+    if (!$('wAstro').hidden && !noneCut(FIT_CHECKS_ACROSS, cutAcross)) w.classList.add('astroBelow');
+    if (noneCut(WEATHER_CHECKS) && noneCut(FIT_CHECKS_ACROSS, cutAcross)) return;
+  }
+}
+
+function fitAll() {
+  fitZoom(app, Math.min(1, FIT_FLOOR_PX / (16 * (config.zoom || 1))), () => {
+    fitTopBar();   // its height leaves the rest to the badges and the weather
+    fitWeather();
+    return noneCut(FIT_CHECKS) && noneCut(FIT_CHECKS_ACROSS, cutAcross) && badgesShown();
+  });
+}
+
+let fitQueued = false;
+/** fitAll() and the redraws before the next frame, once however many changes ask for it. */
+function scheduleFit() {
+  if (fitQueued) return;
+  fitQueued = true;
+  requestAnimationFrame(() => {
+    fitQueued = false;
+    fitAll();
+    drawWeatherBg();
+    drawNetSpark();
+    if (LARGE_MQ.matches) drawCardCharts();
+  });
+}
+
+// The system texts change every second: shrink as soon as they no longer fit,
+// grow back at most once a minute (no size changing back and forth).
+let growAt = 0;
+function refitOnTick() {
+  if (noneCut(SYS_CHECKS) && (app.style.zoom === '' || Date.now() < growAt)) return;
+  growAt = Date.now() + 60000;
+  const before = app.style.zoom;
+  fitAll();
+  if (app.style.zoom !== before) drawWeatherBg();
+}
+
 /* ---------------- market badges ---------------- */
 
 function renderMarkets() {
@@ -105,6 +229,7 @@ function renderMarkets() {
   for (const it of sorted) grid.appendChild(makeBadge(it));
   wrap.appendChild(grid);
   applySparks(lastSparks);
+  scheduleFit();
 }
 
 async function dropItem(it) {
@@ -257,11 +382,22 @@ window.dash.onQuotes((d) => {
 
 /* ---------------- clock ---------------- */
 
+let clockShape = '';
+
 function tickClock() {
   const d = new Date();
-  $('clockTime').textContent = d.toLocaleTimeString(i18n.locale);
-  $('dateDay').textContent = d.toLocaleDateString(i18n.locale, { weekday: 'long' });
-  $('dateFull').textContent = d.toLocaleDateString(i18n.locale, { day: 'numeric', month: 'long', year: 'numeric' });
+  const time = d.toLocaleTimeString(i18n.locale);
+  const day = d.toLocaleDateString(i18n.locale, { weekday: 'long' });
+  const full = d.toLocaleDateString(i18n.locale, { day: 'numeric', month: 'long', year: 'numeric' });
+  $('clockTime').textContent = time;
+  $('dateDay').textContent = day;
+  $('dateFull').textContent = full;
+  // A new day or one more digit (9:59 -> 10:00) changes the room they take.
+  const shape = `${time.length}|${day}|${full}`;
+  if (shape !== clockShape) {
+    clockShape = shape;
+    scheduleFit();
+  }
 }
 tickClock();
 setInterval(tickClock, 1000);
@@ -283,6 +419,7 @@ function buildCores(n) {
     wrap.appendChild(c);
     coreEls.push(f);
   }
+  scheduleFit();
 }
 
 /** Green -> amber -> red: the colour carries as much as the height. */
@@ -309,6 +446,7 @@ let lastSys = null;
 window.dash.onSys((s) => {
   lastSys = s;
   renderSys(s);
+  refitOnTick();
   const rate = s.net.rate || { down: null, up: null };
   pushNetHistory(rate.down ?? 0, rate.up ?? 0);
   onHistoryTick();
@@ -706,6 +844,7 @@ $('zooms').addEventListener('click', async (e) => {
   if (!b) return;
   config = await window.dash.setZoom(Number(b.dataset.z));
   syncSettings();
+  scheduleFit();   // the floor depends on the zoom setting
   // Zoom changes the viewport size: the SVGs must be redrawn.
   drawNetSpark();
   if (!$('chartOv').hidden) loadChart();
@@ -1102,6 +1241,7 @@ function onHistoryTick() {
 }
 
 LARGE_MQ.addEventListener('change', () => {
+  fitAll();
   if (LARGE_MQ.matches) { drawCardCharts(); drawWeatherChart(); }
   drawWeatherBg();
 });
@@ -1170,14 +1310,16 @@ $('menuBtn').addEventListener('click', () => window.dash.showMenu());
 })();
 
 window.addEventListener('resize', () => {
+  fitAll();
   if (!$('chartOv').hidden) loadChart();
   if (detail) renderDetail();
   if (LARGE_MQ.matches) { drawCardCharts(); drawWeatherChart(); }
   drawWeatherBg();
+  drawNetSpark();
   renderWeatherDetail();
 });
-// Selawik may load after the first draw and move the icon and the temperature.
-document.fonts?.ready.then(drawWeatherBg);
+// Selawik may load after the first draw and change the room texts take.
+document.fonts?.ready.then(() => { fitAll(); drawWeatherBg(); });
 
 /* ---------------- weather ---------------- */
 
@@ -1516,6 +1658,7 @@ function renderWeatherEvent({ data, error, needsSite: noSite }) {
   if (needsSite) renderNoSite();
   else if (data) renderWeather(data);
   else if (error) $('wDesc').textContent = t('weather.unavailable');
+  scheduleFit();
 }
 
 window.dash.onWeather((w) => {

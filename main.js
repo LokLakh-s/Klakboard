@@ -294,6 +294,19 @@ function createTray() {
 // by itself with the screen. Hidden by the user, it stays hidden.
 let awaitingDisplay = false;
 
+// Smallest window, in CSS px at the zoom setting, the page can shrink into
+// without cutting anything (see the fitting in renderer.js); never more than
+// its screen.
+const MIN_PAGE = { width: 480, height: 320 };
+
+function applyMinSize(area = screen.getDisplayMatching(mainWindow.getBounds()).bounds) {
+  const z = config.zoom || 1;
+  mainWindow.setMinimumSize(
+    Math.min(Math.round(MIN_PAGE.width * z), area.width),
+    Math.min(Math.round(MIN_PAGE.height * z), area.height),
+  );
+}
+
 /**
  * Fits the window to its screen. In cover mode, 'screen-saver' is the only
  * level above the Windows taskbar, and the window takes the screen's PHYSICAL
@@ -308,6 +321,7 @@ function placeWindow(reveal = false) {
   if (!mainWindow) return;
   const wantVisible = reveal || awaitingDisplay || mainWindow.isVisible();
   if (!config.coverTaskbar) {
+    applyMinSize();
     awaitingDisplay = false;
     mainWindow.setAlwaysOnTop(false);
     if (wantVisible) mainWindow.show();
@@ -320,6 +334,7 @@ function placeWindow(reveal = false) {
     return;
   }
   awaitingDisplay = false;
+  applyMinSize(d.bounds);
   mainWindow.setBounds(d.bounds);
   if (wantVisible) showWindow();
   else mainWindow.setAlwaysOnTop(true, 'screen-saver');
@@ -713,8 +728,9 @@ ipcMain.handle('set-resolution', (_e, { width, height }) => {
   const cur = mainWindow.getBounds();
   const x = Math.min(Math.max(cur.x, d.bounds.x), d.bounds.x + d.bounds.width - w);
   const y = Math.min(Math.max(cur.y, d.bounds.y), d.bounds.y + d.bounds.height - h);
+  applyMinSize(d.bounds);
   mainWindow.setBounds({ x, y, width: w, height: h });
-  config.bounds = { x, y, width: w, height: h };
+  config.bounds = mainWindow.getBounds();   // the minimum size may have won
   saveConfig();
   return config;
 });
@@ -770,7 +786,10 @@ ipcMain.handle('set-theme', (_e, name) => {
 ipcMain.handle('set-zoom', (_e, z) => {
   config.zoom = Math.min(2.5, Math.max(0.8, Number(z) || 1));
   saveConfig();
-  if (mainWindow) mainWindow.webContents.setZoomFactor(config.zoom);
+  if (mainWindow) {
+    mainWindow.webContents.setZoomFactor(config.zoom);
+    applyMinSize();
+  }
   return config;
 });
 

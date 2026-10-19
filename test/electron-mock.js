@@ -41,7 +41,12 @@ function createMock({ displays, primaryId, userData, locales }) {
     loadFile() {}
     on(event, cb) { on(this.events)(event, cb); }
     getBounds() { return { ...this.bounds }; }
-    setBounds(b) { this.bounds = { ...b }; }
+    // Like Electron: a window never gets smaller than its minimum size.
+    setBounds(b) {
+      const [mw, mh] = this.minSize || [0, 0];
+      this.bounds = { ...b, width: Math.max(b.width, mw), height: Math.max(b.height, mh) };
+    }
+    setMinimumSize(width, height) { this.minSize = [width, height]; }
     isVisible() { return this.visible; }
     isMinimized() { return false; }
     show() { this.visible = true; }

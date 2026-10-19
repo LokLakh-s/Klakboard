@@ -16,6 +16,20 @@ test('covers the small screen at startup', async () => {
   assert.equal(app.window.onTop, 'screen-saver');
 });
 
+test('minimum size: follows the zoom, never larger than the screen', async () => {
+  const tiny = makeDisplay(2, 2560, 0, 480, 320);
+  const covering = await loadMain({ displays: [primary(), tiny], config: { zoom: 1.75 } });
+  assert.deepEqual(covering.window.bounds, tiny.bounds, 'the whole small screen, whatever the zoom');
+  assert.deepEqual(covering.window.minSize, [480, 320]);
+
+  const windowed = await loadMain({ displays: [primary()], config: { coverTaskbar: false, zoom: 1.5 } });
+  assert.deepEqual(windowed.window.minSize, [720, 480]);
+  await windowed.invoke('set-resolution', { width: 640, height: 480 });
+  assert.equal(windowed.window.bounds.width, 720, 'grown to the minimum');
+  const saved = JSON.parse(fs.readFileSync(path.join(windowed.userData, 'dashboard.json'), 'utf8'));
+  assert.equal(saved.bounds.width, 720, 'the size actually applied is saved');
+});
+
 test('small screen unplugged: hidden, then back when it returns', async () => {
   const app = await loadMain({ displays: [primary(), small()] });
   app.unplug(2);
