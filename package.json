@@ -45,6 +45,7 @@
       "token.js",
       "i18n.js",
       "charts.js",
+      "astro.js",
       "history.js",
       "icons/**/*",
       "autostart.js",

@@ -51,7 +51,7 @@ async function getWeather(site) {
     timezone: site.timezone || 'auto',
     forecast_days: '2',
     current: 'temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_gusts_10m,wind_direction_10m',
-    daily: 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,sunrise,sunset',
+    daily: 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,sunrise,sunset,daylight_duration',
     hourly: 'cape,temperature_2m,apparent_temperature,weather_code,is_day,precipitation_probability,'
       + 'precipitation,wind_speed_10m,wind_gusts_10m,wind_direction_10m',
   });
@@ -101,8 +101,13 @@ async function getWeather(site) {
       gusts: d.hourly.wind_gusts_10m[i],
       windDeg: d.hourly.wind_direction_10m[i],
     })),
-    // Sunrise and sunset of today and tomorrow (missing during polar night or day).
-    sun: d.daily.sunrise.map((rise, i) => ({ rise: toMs(rise), set: toMs(d.daily.sunset[i]) })),
+    // Sunrise and sunset of today and tomorrow (missing during polar night or
+    // day), with the day length in seconds (0 or 86400 then).
+    sun: d.daily.sunrise.map((rise, i) => ({
+      rise: toMs(rise), set: toMs(d.daily.sunset[i]), daylight: d.daily.daylight_duration?.[i] ?? null,
+    })),
+    // IANA time zone of the city: its sun times are shown in its own time.
+    timezone: d.timezone,
     updatedAt: Date.now(),
   };
 }

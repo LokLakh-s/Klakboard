@@ -407,6 +407,50 @@ test('history: rings, 10-second averages, missing values', () => {
   assert.equal(createHistory().get('10m').t.length, 0);
 });
 
+test('moon: phase instants of 2026 (USNO), names, lit part', () => {
+  const { elongation, moonPhase, litPath } = require('../astro');
+  // aa.usno.navy.mil/api/moon/phases/year?year=2026, one in three.
+  const usno = [
+    ['2026-01-03T10:03Z', 'full'],
+    ['2026-01-26T04:47Z', 'firstQuarter'],
+    ['2026-02-17T12:01Z', 'new'],
+    ['2026-03-11T09:38Z', 'lastQuarter'],
+    ['2026-04-02T02:12Z', 'full'],
+    ['2026-04-24T02:32Z', 'firstQuarter'],
+    ['2026-05-16T20:01Z', 'new'],
+    ['2026-06-08T10:00Z', 'lastQuarter'],
+    ['2026-06-29T23:56Z', 'full'],
+    ['2026-07-21T11:05Z', 'firstQuarter'],
+    ['2026-08-12T17:37Z', 'new'],
+    ['2026-09-04T07:51Z', 'lastQuarter'],
+    ['2026-09-26T16:49Z', 'full'],
+    ['2026-10-18T16:12Z', 'firstQuarter'],
+    ['2026-11-09T07:02Z', 'new'],
+    ['2026-12-01T06:08Z', 'lastQuarter'],
+    ['2026-12-24T01:28Z', 'full'],
+  ];
+  const target = { new: 0, firstQuarter: 90, full: 180, lastQuarter: 270 };
+  for (const [when, key] of usno) {
+    const ms = Date.parse(when);
+    const off = ((elongation(ms) - target[key] + 540) % 360) - 180;
+    // 0.25 degree is about 30 minutes of the Moon's motion.
+    assert.ok(Math.abs(off) < 0.25, `${when}: ${off.toFixed(3)} degrees from ${key}`);
+    assert.equal(moonPhase(ms).key, key, when);
+  }
+  const day = 86400000;
+  const full = Date.parse('2026-10-26T04:12Z');
+  assert.equal(moonPhase(full).illumination.toFixed(3), '1.000');
+  assert.equal(moonPhase(full - 3 * day).key, 'waxingGibbous');
+  assert.equal(moonPhase(full + 3 * day).key, 'waningGibbous');
+  assert.equal(moonPhase(full + 3 * day).waxing, false);
+  // USNO: 58 % lit on 2026-10-19 at noon UT.
+  assert.equal(Math.round(moonPhase(Date.parse('2026-10-19T12:00Z')).illumination * 100), 58);
+  // Crescent: terminator bulging to the right (sweep 0); gibbous: to the left.
+  assert.match(litPath(45, 28, 32), /A19\.8,28 0 0 0 32,4Z$/);
+  assert.match(litPath(135, 28, 32), /A19\.8,28 0 0 1 32,4Z$/);
+  assert.equal(litPath(30, 28, 32), litPath(330, 28, 32), 'same shape, the page mirrors it');
+});
+
 test('ping: reply lines in several Windows languages, macOS and Linux', () => {
   const { parseWindowsLine, parseUnixLine } = require('../platform/ping');
   assert.equal(parseWindowsLine('Reply from 9.9.9.9: bytes=32 time=12ms TTL=57'), 12);

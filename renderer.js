@@ -1226,12 +1226,19 @@ function drawWeatherBg() {
     series: [{ values: temps, color: palette().warn, fill: true, width: 2 }],
   });
   if (!geom) return;
+  // Screen boxes give the positions; the mask is drawn in the canvas's own
+  // units (the card may be shrunk, see fitting).
   const box = canvas.getBoundingClientRect();
   const icon = $('wIcon').getBoundingClientRect();
+  const astroBox = $('wAstro').getBoundingClientRect();
   const reading = document.querySelector('.wReading').getBoundingClientRect();
   const at = (px) => Math.min(1, Math.max(0, (px - box.left) / box.width));
-  // The Meteocons drawing only fills the middle of its box.
-  const a = at(icon.right - icon.width * 0.12);
+  // Faded under the icon (its drawing only fills the middle of its box) and
+  // the moon and sun when they sit beside it, clear up to the temperature.
+  const astroBeside = astroBox.width && astroBox.top < reading.bottom && astroBox.bottom > reading.top;
+  let left = icon.right - icon.width * 0.12;
+  if (astroBeside) left = Math.max(left, astroBox.right);
+  const a = at(left);
   const b = at(reading.left);
   const LOW = 0.22;
   const HIGH = 0.95;
@@ -1241,7 +1248,8 @@ function drawWeatherBg() {
     ? [[0, LOW], [a - 0.02, LOW], [a + 0.1, HIGH], [b - 0.1, HIGH], [b + 0.02, LOW], [1, LOW]]
     : [[0, LOW], [1, LOW]];
   const ctx = canvas.getContext('2d');
-  const g = ctx.createLinearGradient(0, 0, box.width, 0);
+  const [w, h] = [canvas.clientWidth, canvas.clientHeight];
+  const g = ctx.createLinearGradient(0, 0, w, 0);
   let prev = 0;
   for (const [pos, alpha] of stops) {
     prev = Math.max(prev, Math.min(1, Math.max(0, pos)));
@@ -1250,7 +1258,18 @@ function drawWeatherBg() {
   ctx.save();
   ctx.globalCompositeOperation = 'destination-in';
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, box.width, box.height);
+  ctx.fillRect(0, 0, w, h);
+  // Moon and sun on their own line: faded behind that line too.
+  if (astroBox.width && !astroBeside) {
+    const top = Math.min(1, Math.max(0, (astroBox.top - box.top) / box.height));
+    const v = ctx.createLinearGradient(0, 0, 0, h);
+    v.addColorStop(0, 'rgba(0, 0, 0, 1)');
+    v.addColorStop(Math.max(0, top - 0.08), 'rgba(0, 0, 0, 1)');
+    v.addColorStop(Math.min(1, top + 0.04), `rgba(0, 0, 0, ${LOW})`);
+    v.addColorStop(1, `rgba(0, 0, 0, ${LOW})`);
+    ctx.fillStyle = v;
+    ctx.fillRect(0, 0, w, h);
+  }
   ctx.restore();
 }
 
@@ -1310,7 +1329,12 @@ function renderWeatherDetail(pointer) {
     ? `${t('wx.next24')} · ${key in i18n.STRINGS.en ? t(key) : t('weather.unknown')}, ${Math.round(w.temp)} °C`
     : t('wx.next24');
   const sun = w?.sun?.[0];
-  $('wxSun').textContent = sun && Number.isFinite(sun.rise) ? t('wx.sun', { rise: hhmm(sun.rise), set: hhmm(sun.set) }) : '';
+  const moon = astro.moonPhase(Date.now());
+  $('wxSun').textContent = [
+    sun && Number.isFinite(sun.rise) ? t('wx.sun', { rise: cityTime(sun.rise, w.timezone), set: cityTime(sun.set, w.timezone) }) : null,
+    w ? daylightText(w) : null,
+    `${t(`moon.${moon.key}`)} (${fmtShare(moon.illumination)})`,
+  ].filter(Boolean).join(' · ');
 
   const defs = weatherDefs(hours);
   const shape = `${hours.length}:${i18n.lang}`;
@@ -1391,6 +1415,7 @@ function renderNoSite() {
   drawWeatherBg();
   $('wHourly').replaceChildren();
   $('wIcon').hidden = true;
+  $('wAstro').hidden = true;
   $('wSite').textContent = '--';
   $('wTemp').textContent = '--';
   $('wDesc').textContent = t('weather.pickCity');
@@ -1419,7 +1444,47 @@ function renderWeather(d) {
   const storm = $('wStorm');
   storm.textContent = t(`storm.${d.storm}`);
   storm.className = `wVal ${STORM_CLASS[d.storm] || ''}`;
+  renderAstro(d);
   renderHourly(d.hourly || []);
+}
+
+/* ---- moon and sun, next to the weather icon ---- */
+
+/** Hours and minutes in the city's time zone (the system one when unknown). */
+function cityTime(ms, timeZone) {
+  try {
+    return fmtTime(ms, { hour: 'numeric', minute: '2-digit', timeZone });
+  } catch {
+    return hhmm(ms);   // zone name unknown to this system
+  }
+}
+
+/** Share (0 to 1) as a percentage of the locale: "58%", « 58 % ». */
+const fmtShare = (v) => new Intl.NumberFormat(i18n.locale, { style: 'percent', maximumFractionDigits: 0 }).format(v);
+
+/** Day length of the city today, from Open-Meteo (polar day and night included). */
+function daylightText(d) {
+  const sun = d.sun?.[0];
+  const secs = sun?.daylight ?? (Number.isFinite(sun?.set - sun?.rise) ? (sun.set - sun.rise) / 1000 : null);
+  if (secs == null) return null;
+  const mins = Math.round(secs / 60);
+  return t('sun.daylight', { h: Math.floor(mins / 60), m: String(mins % 60).padStart(2, '0') });
+}
+
+function renderAstro(d) {
+  // Drawn lit on the right (waxing, seen from the north): mirrored when
+  // waning, and once more south of the equator, where the Moon looks flipped.
+  const moon = astro.moonPhase(Date.now());
+  const south = (config.weatherSite?.lat ?? 0) < 0;
+  $('wMoonLit').setAttribute('d', astro.litPath(moon.elongation, 28, 32));
+  $('wMoon').classList.toggle('mirror', !moon.waxing !== south);
+  $('wMoonName').textContent = t(`moon.${moon.key}`);
+  $('wMoonLitPct').textContent = t('moon.lit', { pct: fmtShare(moon.illumination) });
+  const sun = d.sun?.[0];
+  const known = Number.isFinite(sun?.rise) && Number.isFinite(sun?.set);
+  $('wSunTimes').textContent = known ? `↑ ${cityTime(sun.rise, d.timezone)}\u2003↓ ${cityTime(sun.set, d.timezone)}` : '↑ --\u2003↓ --';
+  $('wDayLen').textContent = daylightText(d) || '--';
+  $('wAstro').hidden = false;
 }
 
 // "4 h" rather than "04 h": French CLDR pads the hour even in numeric form.

@@ -186,11 +186,30 @@ html, body {
 .weather:hover, .weather:focus-visible { background: var(--hover); outline: none; }
 
 .wHead { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
-.wPlace { font-size: 1.5rem; font-weight: 700; color: var(--dim); }
+.wPlace { font-size: 1.5rem; font-weight: 700; color: var(--dim); white-space: nowrap; min-width: 0; }
 .wOpen { font-size: 1.4rem; color: var(--accent); white-space: nowrap; }
+@container (max-width: 22rem) {
+  .wTitle, .wOpenLbl { display: none; }
+}
 
-/* Takes the card's free height, content centred vertically. */
-.wMain { flex: 1 1 auto; display: flex; align-items: center; gap: 1.4rem; min-height: 0; position: relative; }
+/* Takes the card's free height, content centred vertically; never smaller
+   than its content (the card shrinks instead, see renderer.js). */
+.wMain { flex: 1 1 auto; display: flex; align-items: center; gap: 1.4rem; position: relative; }
+/* Moon phase, sunrise and sunset, day length: next to the icon when they fit
+   there, on their own line otherwise (.astroBelow, set by renderer.js). */
+.wAstro { flex: 0 1 auto; display: flex; flex-direction: column; gap: 0.4rem; }
+.wAstro[hidden] { display: none; }
+.wAstroRow { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.wMoon { flex: 0 0 auto; width: 2.5rem; height: 2.5rem; overflow: visible; }
+.wMoon.mirror { transform: scaleX(-1); }
+.moonDisc { fill: color-mix(in srgb, var(--faint) 10%, transparent); stroke: var(--faint); stroke-opacity: .55; stroke-width: 2; stroke-dasharray: 4 4; }
+.moonLit { stroke: #72b9d5; stroke-width: 1.5; stroke-linejoin: round; }
+/* The Meteocons drawing fills the middle of its box. */
+.wSunIcon { flex: 0 0 auto; width: 3.1rem; height: 3.1rem; margin: -0.3rem; }
+.wAstroText { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.wAstroMain { font-size: 1.3rem; color: var(--txt); font-variant-numeric: tabular-nums; }
+.wAstroSub { font-size: 1.15rem; color: var(--faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+#wSunTimes { white-space: nowrap; }
 /* Next 24 hours behind the icon and the temperature (faded under them by
    renderer.js); large screens have their own chart instead. */
 .wBgChart { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -198,12 +217,15 @@ html, body {
 /* The Meteocons drawing only fills ~70 % of its box: negative margins keep
    the box from inflating the card. */
 .wIcon { flex: 0 0 auto; width: 9rem; height: 9rem; margin: -1.2rem -0.6rem -1.2rem -1rem; }
-.wReading { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; min-width: 0; }
+.wReading { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; flex: 0 1 auto; }
 .wTemp { font-size: 4rem; font-weight: 400; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .wUnit { font-size: 0.55em; margin-left: 0.15em; vertical-align: 0.6em; color: var(--dim); }
 .wSide { display: flex; flex-direction: column; align-items: flex-end; text-align: right; min-width: 0; }
-.wDesc { font-size: 1.7rem; color: var(--txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.wFeels { font-size: 1.45rem; color: var(--faint); }
+.wDesc {
+  font-size: 1.7rem; line-height: 1.15; color: var(--txt);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.wFeels { font-size: 1.45rem; color: var(--faint); white-space: nowrap; }
 
 .wStats { display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 0.8rem; }
 .wStat { display: flex; flex-direction: column; min-width: 0; }
@@ -213,25 +235,32 @@ html, body {
 .wVal.alert { color: var(--down); }
 
 /* Compact steps when the card lacks its natural height (three rows of
-   badges, high zoom): smaller icon and temperature, no feels-like, then no
-   header (the whole card stays clickable). Stats follow the width (cqi) so
-   they do not overlap above 115 %. */
-@container (max-height: 13.5rem) {
+   badges): smaller icon and temperature. Nothing is hidden: below that, the
+   whole card shrinks (fitting in renderer.js). Stats follow the width (cqi). */
+@container (max-height: 15rem) {
   .wIcon { width: 6rem; height: 6rem; margin: -0.8rem -0.4rem -0.8rem -0.7rem; }
   .wTemp { font-size: 2.8rem; }
   .wReading { gap: 0.1rem; }
-  .wFeels { display: none; }
+  .wDesc { font-size: 1.45rem; }
+  .wAstro { gap: 0.15rem; }
 }
-@container (max-height: 10rem) {
-  .wHead { display: none; }
+.astroBelow .wMain {
+  display: grid; grid-template-columns: auto minmax(min-content, 1fr);
+  grid-template-areas: "icon reading" "astro astro";
+  align-content: center; row-gap: 0.5rem;
 }
-/* Narrow card (bar screens): smaller icon and temperature, stats on two rows. */
+.astroBelow .wIcon { grid-area: icon; }
+.astroBelow .wReading { grid-area: reading; }
+.astroBelow .wAstro { grid-area: astro; flex-direction: row; flex-wrap: wrap; column-gap: 1.2rem; }
+/* Narrow card (bar screens): smaller icon and temperature, stats on two rows
+   (their text follows the card width, sized so the longest label fits). */
 @container (max-width: 24rem) {
   .wIcon { width: 6rem; height: 6rem; margin: -0.8rem -0.4rem -0.8rem -0.7rem; }
   .wTemp { font-size: 2.8rem; }
+  .wDesc { font-size: 1.45rem; }
   .wStats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 0.4rem; }
-  .wLbl { font-size: min(1.35rem, 7cqi); }
-  .wVal { font-size: min(1.7rem, 9.6cqi); }
+  .wLbl { font-size: min(1.35rem, 6cqi); }
+  .wVal { font-size: min(1.7rem, 8.6cqi); }
 }
 
 .emptyHint { padding: 1.4rem 0.8rem; text-align: center; color: var(--faint); font-size: 1.15rem; }
