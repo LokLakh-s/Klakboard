@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/dashboard-dark.png" width="720" alt="Klakboard on a 960 × 640 screen: metals, currencies and crypto badges with 12-hour sparklines, weather card, CPU cores, RAM, GPU and network panels">
+  <img src="docs/screenshots/dashboard-dark.png" width="720" alt="Klakboard on a 960 × 640 screen: metals, currencies and crypto badges with 12-hour sparklines, weather card with the Moon and the Sun, CPU cores, RAM, GPU and network panels with the ping">
 </p>
 
 ---
@@ -40,10 +40,12 @@ after three missed cycles, and the status dot turns red (details in its tooltip)
 
 **Weather** — current conditions and today's forecast for the city you pick:
 temperature, feels-like, min/max, rain, wind and gusts, thunderstorm risk
-(CAPE). Behind the icon and the temperature, a faded curve shows the next
-24 hours; a click on it opens them hour by hour (temperature and feels-like,
-rain chance and amount, wind and gusts, sunrise and sunset). The rest of the
-card opens the Windy map.
+(CAPE). Next to the icon: the Moon's phase and how much of it is lit
+(computed on your computer, mirrored south of the equator), sunrise and sunset
+in the city's time, and the day length. Behind them, a faded curve shows the
+next 24 hours; a click on it opens them hour by hour (temperature and
+feels-like, rain chance and amount, wind and gusts). The rest of the card opens
+the Windy map.
 
 **System** — refreshed every second, independently of the markets.
 
@@ -51,15 +53,16 @@ card opens the Windy map.
 - RAM used / total / available
 - GPU: load, memory, fan and temperature where available (NVIDIA everywhere,
   AMD and Intel on Windows, AMD on Linux, Apple silicon and AMD on macOS)
-- Network: live rates, 90-second history, totals (reset in two clicks)
+- Network: live rates, ping to [Quad9](https://quad9.net) (9.9.9.9), 90-second
+  history, totals (reset in two clicks)
 
 A click on a system card opens its **history** over 1 minute, 10 minutes or
 1 hour, with values under the pointer: CPU total and one curve per core, RAM,
-GPU load, memory and temperature, network rates with average and peak.
+GPU load, memory and temperature, network rates and ping with average and peak.
 
 <p align="center">
   <img src="docs/screenshots/detail-cpu.png" width="360" alt="CPU history: total load and one curve per core, with the values at the pointer">
-  <img src="docs/screenshots/detail-net-fr.png" width="360" alt="Network history in French: download and upload rates, average and peak">
+  <img src="docs/screenshots/detail-net-fr.png" width="360" alt="Network history in French: download and upload rates, ping, average and peak">
 </p>
 
 **Comfort** — English and French (following the system, or picked in the
@@ -85,11 +88,16 @@ small 3.5 to 8-inch panels, bar screens, a spare monitor, a tablet used as a
 second screen. The layout follows the shape of the screen:
 
 - **landscape** panels close to 3:2 or 4:3 (960 × 640, 1024 × 600, 800 × 480…);
-- **bar** screens, 2.4:1 and wider (1920 × 480, 1920 × 440, 2560 × 720, 1280 × 400…);
+- **bar** screens, 2.4:1 and wider from 1000 px wide (1920 × 480, 1920 × 440,
+  2560 × 720, 1280 × 400…);
 - **portrait** screens, 4:5 and narrower (480 × 800, 600 × 1024, 480 × 1920…);
 - **large** screens, from about 1500 × 850: the system cards show their history
   curves, and the weather card the temperature over the next 24 hours and the
   next 12 hours one by one.
+
+Any window size in between works too, down to 480 × 320: the date goes on one
+line or two, the Moon and the Sun beside the weather icon or below it, and when
+room is still short the dashboard shrinks as a whole rather than cutting a text.
 
 <p align="center">
   <img src="docs/screenshots/bar-1920x480.png" width="720" alt="Bar layout on a 1920 × 480 screen: badges, weather and system side by side">
@@ -174,6 +182,7 @@ All free, **no API key**. Requests go out from the main process, with a
 | Currencies | Yahoo Finance | Yahoo Finance |
 | Crypto | Binance public market data (`data-api.binance.vision`) | Binance |
 | Weather | [Open-Meteo](https://open-meteo.com) | — |
+| Ping | ICMP echo to Quad9 (9.9.9.9) with the system's `ping`, once a second | kept 1 hour, like the other metrics |
 
 - Yahoo quotes metals as **futures** (`GC=F` trades about 1 % above spot). The
   price shown comes from gold-api, and the chart is scaled by
@@ -181,8 +190,8 @@ All free, **no API key**. Requests go out from the main process, with a
 - Yahoo Finance has no official public API: it may change or throttle without
   notice. Klakboard then keeps showing the last known prices.
 
-**Privacy** — no account, no telemetry. The only requests are to the sources
-above and to the GitHub API for updates. Settings stay on your computer, in
+**Privacy** — no account, no telemetry. The only network traffic is to the
+sources above (the ping included) and to the GitHub API for updates. Settings stay on your computer, in
 `dashboard.json`: `%APPDATA%\Klakboard` on Windows, `~/Library/Application
 Support/Klakboard` on macOS, `~/.config/Klakboard` on Linux.
 
@@ -220,20 +229,22 @@ second would cost too much (PowerShell takes ~0.8 s to start):
 | GPU, NVIDIA | `nvidia-smi -lms`, one process | — | `nvidia-smi -lms`, one process |
 | GPU, others | performance counters (CIM), one PowerShell process | `ioreg` (IOAccelerator) | amdgpu sysfs |
 | Network | `Get-NetAdapterStatistics`, one PowerShell process | `netstat -ibn` | `/proc/net/dev` |
+| Ping | `ping.exe`, one process (any Windows language) | `ping`, one process | `ping`, one process |
 
 ```
 main.js       main process: window, screens, tray, IPC, settings, updates
 display.js    picks the screen to cover
 markets.js    market sources and chart normalisation
 weather.js    Open-Meteo weather and icon choice
+astro.js      Moon phase, computed from the date (Meeus), shared by page and tests
 system.js     CPU / RAM / GPU / network metrics, sampled every second
 history.js    metrics history: 10 min at 1 s, 1 h at 10 s (main process)
-platform/     metric sources per system (win32, darwin, linux, nvidia)
+platform/     metric sources per system (win32, darwin, linux, nvidia, ping)
 autostart.js  start at login on Linux (XDG autostart entry)
 updates.js    finds and downloads releases
 updater.js    swaps the app archive after exit (runs outside the app)
 preload.js    IPC bridge (context isolation on)
-renderer.js   rendering: badges, charts, history views, settings
+renderer.js   rendering: badges, charts, history views, settings, fitting the window
 charts.js     time-series charts on canvas
 i18n.js       interface strings (English, French), shared by main and page
 style.css     themes, type scale, landscape / bar / portrait layouts
