@@ -40,12 +40,12 @@ after three missed cycles, and the status dot turns red (details in its tooltip)
 
 **Weather** — current conditions and today's forecast for the city you pick:
 temperature, feels-like, min/max, rain, wind and gusts, thunderstorm risk
-(CAPE). Next to the icon: the Moon's phase and how much of it is lit
-(computed on your computer, mirrored south of the equator), sunrise and sunset
-in the city's time, and the day length. Behind them, a faded curve shows the
-next 24 hours; a click on it opens them hour by hour (temperature and
-feels-like, rain chance and amount, wind and gusts). The rest of the card opens
-the Windy map.
+(CAPE). Under the icon, when the card is tall enough: the Moon's phase and how
+much of it is lit (computed on your computer, mirrored south of the equator),
+sunrise and sunset in the city's time, and the day length. Behind them, a faded
+curve shows the next 24 hours; a click on it opens them hour by hour
+(temperature and feels-like, rain chance and amount, wind and gusts). The rest
+of the card opens the Windy map.
 
 **System** — refreshed every second, independently of the markets.
 
@@ -88,19 +88,11 @@ small 3.5 to 8-inch panels, bar screens, a spare monitor, a tablet used as a
 second screen. The layout follows the shape of the screen:
 
 - **landscape** panels close to 3:2 or 4:3 (960 × 640, 1024 × 600, 800 × 480…);
-- **bar** screens, 2.4:1 and wider from 1000 px wide (1920 × 480, 1920 × 440,
-  2560 × 720, 1280 × 400…);
+- **bar** screens, 2.4:1 and wider (1920 × 480, 1920 × 440, 2560 × 720, 1280 × 400…);
 - **portrait** screens, 4:5 and narrower (480 × 800, 600 × 1024, 480 × 1920…);
 - **large** screens, from about 1500 × 850: the system cards show their history
   curves, and the weather card the temperature over the next 24 hours and the
   next 12 hours one by one.
-
-Any window size in between works too, at any zoom, and texts always keep the
-size the zoom gives them. The date goes on one line or two, the Moon and the Sun
-beside the weather icon or below it; when room is still short, the least useful
-details give way one by one (the month abbreviated, the year, the CPU model, the
-feels-like temperature…) and come back as soon as there is room. The clock, the
-prices, the temperature and the system readings always stay.
 
 <p align="center">
   <img src="docs/screenshots/bar-1920x480.png" width="720" alt="Bar layout on a 1920 × 480 screen: badges, weather and system side by side">
@@ -247,7 +239,7 @@ autostart.js  start at login on Linux (XDG autostart entry)
 updates.js    finds and downloads releases
 updater.js    swaps the app archive after exit (runs outside the app)
 preload.js    IPC bridge (context isolation on)
-renderer.js   rendering: badges, charts, history views, settings, fitting the window
+renderer.js   rendering: badges, charts, history views, settings
 charts.js     time-series charts on canvas
 i18n.js       interface strings (English, French), shared by main and page
 style.css     themes, type scale, landscape / bar / portrait layouts
