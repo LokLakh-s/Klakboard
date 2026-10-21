@@ -2,7 +2,9 @@
  *
  * REAL DENSITY: 960 px / 75 mm = 12.8 px/mm (~325 PPI, 3.6" diagonal).
  * 16 px text is only 1.25 mm high there. The zoom setting (100 to 175 %)
- * scales everything at once for those who want it bigger.
+ * scales everything at once for those who want it bigger, and nothing makes
+ * text smaller than it: when room lacks, details are given up instead
+ * (fitting in renderer.js, rules at the end of this file).
  *
  * Contrast matters as much as size at this scale: greys were raised from
  * #7c89a1 (4.9:1) to #aab6c9 (~9:1 on the card background).
@@ -132,6 +134,7 @@ html, body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .dateDay { text-transform: capitalize; }
+.mShort { display: none; }
 /* Weekday and date on one line when the bar has room for it (renderer.js). */
 .dateText.oneLine { flex-direction: row; align-items: baseline; gap: 0.3em; }
 
@@ -167,13 +170,15 @@ html, body {
 .iBtn:hover { background: var(--hover); color: var(--txt); }
 
 .mScroll { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.shed-badgeRows .mScroll { max-height: var(--badgeRows); }
+.shed-badgeScroll .mScroll { max-height: var(--badgeRow); }
 
 /* ---- weather: fills the space left under the badges ----
    Its height comes from the remaining space (container-type: size), not from
-   its content: with three rows of badges or a high zoom, the card compacts.
-   When even 12rem are not left, the whole dashboard shrinks (renderer.js). */
+   its content: with three rows of badges or a high zoom, the card compacts,
+   then gives up details (renderer.js). */
 .weather {
-  flex: 1 1 0; min-height: 12rem;
+  flex: 1 1 0; min-height: 0;
   container-type: size;
   overflow: hidden;
   display: flex; flex-direction: column; gap: 0.35rem;
@@ -195,7 +200,7 @@ html, body {
 }
 
 /* Takes the card's free height, content centred vertically; never smaller
-   than its content (the card shrinks instead, see renderer.js). */
+   than its content (the card gives up details instead, see renderer.js). */
 .wMain { flex: 1 1 auto; display: flex; align-items: center; gap: 1.4rem; position: relative; }
 /* Moon phase, sunrise and sunset, day length: next to the icon when they fit
    there, on their own line otherwise (.astroBelow, set by renderer.js). */
@@ -236,14 +241,13 @@ html, body {
 .wVal.warn { color: var(--warn); }
 .wVal.alert { color: var(--down); }
 
-/* Compact steps when the card lacks its natural height (three rows of
-   badges): smaller icon and temperature. Nothing is hidden: below that, the
-   whole card shrinks (fitting in renderer.js). Stats follow the width (cqi). */
+/* Compact step when the card lacks its natural height (three rows of
+   badges): smaller icon and temperature. Below that, the card gives up
+   details (fitting in renderer.js). Stats follow the width (cqi). */
 @container (max-height: 15rem) {
   .wIcon { width: 6rem; height: 6rem; margin: -0.8rem -0.4rem -0.8rem -0.7rem; }
   .wTemp { font-size: 2.8rem; }
   .wReading { gap: 0.1rem; }
-  .wDesc { font-size: 1.45rem; }
   .wAstro { gap: 0.15rem; }
 }
 .astroBelow .wMain {
@@ -259,10 +263,15 @@ html, body {
 @container (max-width: 24rem) {
   .wIcon { width: 6rem; height: 6rem; margin: -0.8rem -0.4rem -0.8rem -0.7rem; }
   .wTemp { font-size: 2.8rem; }
-  .wDesc { font-size: 1.45rem; }
   .wStats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 0.4rem; }
   .wLbl { font-size: min(1.35rem, 6cqi); }
   .wVal { font-size: min(1.7rem, 8.6cqi); }
+}
+/* Very narrow card (bar screens up to ~1500 px wide): a smaller icon, closer to
+   the temperature. */
+@container (max-width: 17rem) {
+  .wIcon { width: 4.5rem; height: 4.5rem; margin: -0.6rem -0.3rem -0.6rem -0.5rem; }
+  .wMain { gap: 0.6rem; }
 }
 
 .emptyHint { padding: 1.4rem 0.8rem; text-align: center; color: var(--faint); font-size: 1.15rem; }
@@ -374,7 +383,8 @@ html, body {
   min-width: 0;
 }
 /* CPU and NETWORK absorb the free height, whatever the zoom; no card gets
-   smaller than its content (the column shrinks instead, see renderer.js). */
+   smaller than its content (the column gives up details instead, see
+   renderer.js). */
 .card.grow { flex: 1 1 0; }
 /* A click opens the card's history. */
 .card[data-detail] { cursor: pointer; transition: background .12s; }
@@ -461,6 +471,14 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 .netUnit { font-size: 1.15rem; color: var(--faint); letter-spacing: .3px; line-height: 1.15; }
+/* Narrow card (bar screens up to ~1200 px wide): down, up and ping one under
+   the other, each on a line. */
+.card.net { container-type: inline-size; }
+@container (max-width: 9rem) {
+  .netLive { flex-direction: column; }
+  .netCol { display: flex; align-items: baseline; justify-content: center; gap: 0.35rem; padding: 0.1rem 0.3rem; }
+  .netArrow { flex: 0 0 auto; }
+}
 
 /* Throughput history: takes the card's remaining height. */
 .netSpark { flex: 1 1 auto; min-height: 1.8rem; margin-top: 0.2rem; position: relative; }
@@ -768,3 +786,19 @@ select.input { cursor: pointer; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 0.2rem; }
 ::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+
+/* ================= details given up =================
+ * When the window has no room for everything at the zoom setting, renderer.js
+ * gives these up one by one, least useful first (SHED), and brings them back
+ * as soon as there is room.
+ */
+.shed-monthShort .mLong, .shed-year .dYear, .shed-seconds .tSec, .shed-weekday .dateDay, .shed-date .dateText,
+.shed-moonLit #wMoonLitPct, .shed-dayLength #wDayLen, .shed-feels .wFeels, .shed-wHead .wHead, .shed-wDesc .wDesc,
+.shed-moon .moonRow, .shed-sun .sunRow, .shed-moon.shed-sun .wAstro,
+.shed-stormWind .wStat:nth-child(n+3), .shed-wStats .wStats,
+.shed-cpuFoot .card.cpu .cFoot, .shed-cores .cores, .shed-ramFree #ramFree, .shed-ramFoot .card.ram .cFoot,
+.shed-gpuName #gpuName, .shed-vram .card.gpu .miniRow, .shed-gpuFoot .card.gpu .cFoot,
+.shed-netTotals .card.net .cFoot, .shed-netSpark .netSpark { display: none; }
+.shed-monthShort .mShort { display: inline; }
+/* The fan and temperature alone stay on the right. */
+.shed-gpuName #gpuFanTemp { margin-left: auto; }

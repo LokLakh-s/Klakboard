@@ -294,9 +294,9 @@ function createTray() {
 // by itself with the screen. Hidden by the user, it stays hidden.
 let awaitingDisplay = false;
 
-// Smallest window, in CSS px at the zoom setting, the page can shrink into
-// without cutting anything (see the fitting in renderer.js); never more than
-// its screen.
+// Smallest window, in CSS px at the zoom setting, the page fits into without
+// cutting anything, giving up details (see the fitting in renderer.js); never
+// more than its screen.
 const MIN_PAGE = { width: 480, height: 320 };
 
 function applyMinSize(area = screen.getDisplayMatching(mainWindow.getBounds()).bounds) {

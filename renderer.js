@@ -84,100 +84,143 @@ const fmtMem = (bytes) => num(bytes / 2 ** 30, 1);
 /* ---------------- fitting small windows ---------------- */
 
 /*
- * A small window or a high zoom can leave the dashboard without room for its
- * content. Rather than letting texts get cut or overlap, it then shrinks as a
- * whole with CSS zoom: container queries see the room it would have at full
- * size, so it shows the layout of a larger window, smaller. Floor: base text of
- * FIT_FLOOR_PX on screen, the zoom setting being given up first.
- *
- * The top bar fits on its own (a narrow column in the bar layout): the date on
- * one line when there is room, then two, then smaller.
+ * Texts always keep the size of the zoom setting. When the window has no room
+ * for everything, details are given up, least useful first (SHED), and come
+ * back as soon as there is room again. Before that, the date goes from one
+ * line to two, and the moon and sun from beside the weather icon to below it.
  */
-const FIT_FLOOR_PX = 10;
-const TOP_BAR_FLOOR = 0.6;   // its texts are the largest ones
+const SHED = [
+  'badgeRows',   // badges past the third row: scrolled
+  'monthShort',  // month abbreviated ("19 oct. 2026")
+  'year',        // year of the date
+  'moonLit',     // "62 % lit"
+  'cpuFoot',     // CPU model and thread count
+  'feels',       // feels-like temperature
+  'gpuName',     // GPU model (fan and temperature stay)
+  'ramFree',     // free RAM (used and total stay)
+  'netTotals',   // network totals since the last reset
+  'wHead',       // weather city and map link (the whole card stays clickable)
+  'seconds',     // seconds of the clock
+  'ramFoot',     // RAM used and total (the percentage stays)
+  'wDesc',       // weather description (the icon stays)
+  'netSpark',    // network mini curve
+  'vram',        // GPU memory
+  'gpuFoot',     // GPU fan and temperature
+  'weekday',     // day of the week
+  'cores',       // per-core CPU bars (the average stays)
+  'stormWind',   // wind and storm (together: a row of stats in a narrow card)
+  'dayLength',   // day length
+  'moon',        // moon phase
+  'sun',         // sunrise, sunset
+  'wStats',      // min / max and rain
+  'date',        // the whole date (the clock stays)
+  'badgeScroll', // badges past the first row: scrolled
+];
 // Free width (rem) wanted between the one-line date and the time.
 const ONE_LINE_ROOM = 1.5;
-// Rows of badges that must show; more may scroll.
+// Rows of badges kept in view before the weather gives up its details.
 const BADGE_ROWS_SHOWN = 3;
 // What must not overflow, be cut by an ellipsis or spill out. Rows holding
 // weather icons are checked across only: the icons stick out above and below
 // on purpose (their drawing only fills the middle of their box).
+const TOP_CHECKS = '.topBar, .dateText, .dateDay, .dateFull';
 const SYS_CHECKS = '.sys, .cHead, .cFoot, .cFoot span, .netLive, .netCol, .miniRow';
-const WEATHER_CHECKS = '.weather, .wHead, .wStats, .wDesc, .wLbl, .wVal';
-const FIT_CHECKS = `${WEATHER_CHECKS}, ${SYS_CHECKS}`;
-const FIT_CHECKS_ACROSS = '.wMain, .wAstroRow';
-// The weather card, whose texts are the largest, may first shrink alone.
-const WEATHER_OWN_ZOOMS = [1, 0.9, 0.8];
+const WEATHER_CHECKS = '.wHead, .wStats, .wDesc, .wLbl, .wVal';
+const FIT_CHECKS = `.app, ${TOP_CHECKS}, ${WEATHER_CHECKS}, ${SYS_CHECKS}`;
+const FIT_CHECKS_ACROSS = '.weather, .wMain, .wAstroRow';
 
 const app = document.querySelector('.app');
 
-/** Content larger than the box: cut by an ellipsis or overflow, or spilling out. */
-const cutAcross = (e) => e.scrollWidth > e.clientWidth;
-const cut = (e) => cutAcross(e) || e.scrollHeight > e.clientHeight + 1;
-const noneCut = (selector, test = cut) => ![...app.querySelectorAll(selector)].some(test);
+/**
+ * Pixels of content past the box, across only or both ways. Across, the
+ * smallest excess counts: a fraction of a pixel already brings an ellipsis.
+ */
+const overflowOf = (e, across = false) => Math.max(0, e.scrollWidth - e.clientWidth)
+  + (across ? 0 : Math.max(0, e.scrollHeight - e.clientHeight - 1));
+const sumOver = (selector, across) => [...app.querySelectorAll(selector)].reduce((px, e) => px + overflowOf(e, across), 0);
 
-/** The first BADGE_ROWS_SHOWN rows of badges fit in their area (badges scrolled by hand: not checked). */
-function badgesShown() {
+/** Pixels missing for the rows of badges that must be in view (scrolled by hand: none). */
+function badgeShortfall() {
   const area = $('mScroll');
   const badges = area.querySelectorAll('.badge');
-  if (!badges.length || area.scrollTop > 0) return true;
-  const last = badges[Math.min(badges.length, BADGE_ROWS_SHOWN * 3) - 1];
-  return last.getBoundingClientRect().bottom <= area.getBoundingClientRect().bottom + 1;
-}
-
-/** Largest zoom of `box` between `floor` and 1 at which `fits()` holds; the floor when none does. */
-function fitZoom(box, floor, fits) {
-  const at = (z) => {
-    box.style.zoom = z === 1 ? '' : String(z);
-    return fits();
-  };
-  if (at(1)) return;
-  let lo = floor;
-  let hi = 1;
-  for (let i = 0; i < 6; i++) {
-    const mid = (lo + hi) / 2;
-    if (at(mid)) lo = mid;
-    else hi = mid;
-  }
-  at(lo);
-}
-
-/** Weekday and date on one line when there is room, on two otherwise, the bar shrunk when even that does not fit. */
-function fitTopBar() {
-  const bar = document.querySelector('.topBar');
-  const date = document.querySelector('.dateText');
-  const whole = () => !cut(bar) && !cut(date) && !cut($('dateDay')) && !cut($('dateFull'));
-  bar.style.zoom = '';
-  date.classList.add('oneLine');
-  // The menu button sits in the free space, invisible until hovered.
-  const free = $('clockTime').getBoundingClientRect().left - $('menuBtn').getBoundingClientRect().right
-    - parseFloat(getComputedStyle(bar).columnGap) * (app.currentCSSZoom || 1);
-  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) * (app.currentCSSZoom || 1);
-  if (whole() && free >= ONE_LINE_ROOM * rem) return;
-  date.classList.remove('oneLine');
-  fitZoom(bar, TOP_BAR_FLOOR, whole);
+  if (!badges.length || area.scrollTop > 0) return 0;
+  const rows = app.classList.contains('shed-badgeScroll') ? 1 : BADGE_ROWS_SHOWN;
+  const last = badges[Math.min(badges.length, rows * 3) - 1];
+  return Math.max(0, Math.round(last.getBoundingClientRect().bottom - area.getBoundingClientRect().bottom) - 1);
 }
 
 /**
- * Moon and sun beside the weather icon when they fit there, on their own line
- * otherwise; the card shrunk a little alone when that is still not enough.
+ * Pixels of the weather card's rows past its bottom edge. Not its scroll
+ * height: the icon box sticks out of its row, the drawing does not.
  */
-function fitWeather() {
+function weatherShortfall() {
   const w = $('weather');
-  for (const z of WEATHER_OWN_ZOOMS) {
-    w.style.zoom = z === 1 ? '' : String(z);
-    w.classList.remove('astroBelow');
-    if (!$('wAstro').hidden && !noneCut(FIT_CHECKS_ACROSS, cutAcross)) w.classList.add('astroBelow');
-    if (noneCut(WEATHER_CHECKS) && noneCut(FIT_CHECKS_ACROSS, cutAcross)) return;
-  }
+  const edge = w.getBoundingClientRect().top + w.clientTop + w.clientHeight;
+  const bottom = Math.max(...[...w.children].map((c) => c.getBoundingClientRect().bottom));
+  return Math.max(0, Math.round(bottom - edge) - 1);
 }
 
+/** Everything that does not fit, in pixels: 0 when the dashboard shows whole. */
+const overflow = () => sumOver(FIT_CHECKS) + sumOver(FIT_CHECKS_ACROSS, true) + weatherShortfall() + badgeShortfall();
+
+/** Date on one line when it fits with room to spare, moon and sun beside the icon when they fit there. */
+function chooseLayouts() {
+  const bar = document.querySelector('.topBar');
+  const date = document.querySelector('.dateText');
+  date.classList.add('oneLine');
+  // The menu button sits in the free space, invisible until hovered.
+  const free = $('clockTime').getBoundingClientRect().left - $('menuBtn').getBoundingClientRect().right
+    - parseFloat(getComputedStyle(bar).columnGap);
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  if (sumOver(TOP_CHECKS) > 0 || free < ONE_LINE_ROOM * rem) date.classList.remove('oneLine');
+  const w = $('weather');
+  w.classList.remove('astroBelow');
+  if (!$('wAstro').hidden && sumOver(FIT_CHECKS_ACROSS, true) > 0) w.classList.add('astroBelow');
+}
+
+/** Height of the badge area holding its first `rows` rows. */
+function badgeRowsHeight(rows) {
+  const area = $('mScroll');
+  const last = area.querySelectorAll('.badge')[rows * 3 - 1];
+  if (!last) return 'none';
+  const pad = parseFloat(getComputedStyle(area.firstElementChild).paddingBottom) || 0;
+  return `${last.getBoundingClientRect().bottom - area.getBoundingClientRect().top + area.scrollTop + pad}px`;
+}
+
+const setShed = (name, on) => app.classList.toggle(`shed-${name}`, on);
+
+let shedNow = [];
+let overAfterFit = 0;
+
+/**
+ * Shows as many details as fit, the most useful first: everything is given
+ * up, then each detail comes back unless it makes something overflow. What no
+ * hiding can help (a text too long for any room) leaves the rest as it is.
+ */
 function fitAll() {
-  fitZoom(app, Math.min(1, FIT_FLOOR_PX / (16 * (config.zoom || 1))), () => {
-    fitTopBar();   // its height leaves the rest to the badges and the weather
-    fitWeather();
-    return noneCut(FIT_CHECKS) && noneCut(FIT_CHECKS_ACROSS, cutAcross) && badgesShown();
-  });
+  for (const name of SHED) setShed(name, false);
+  app.style.setProperty('--badgeRows', badgeRowsHeight(BADGE_ROWS_SHOWN));
+  app.style.setProperty('--badgeRow', badgeRowsHeight(1));
+  chooseLayouts();
+  if (overflow() === 0) {
+    shedNow = [];
+    overAfterFit = 0;
+    return;
+  }
+  for (const name of SHED) setShed(name, true);
+  chooseLayouts();
+  const least = overflow();
+  shedNow = [];
+  for (const name of [...SHED].reverse()) {
+    setShed(name, false);
+    chooseLayouts();
+    if (overflow() > least) {
+      setShed(name, true);
+      chooseLayouts();
+      shedNow.unshift(name);
+    }
+  }
+  overAfterFit = overflow();
 }
 
 let fitQueued = false;
@@ -194,15 +237,22 @@ function scheduleFit() {
   });
 }
 
-// The system texts change every second: shrink as soon as they no longer fit,
-// grow back at most once a minute (no size changing back and forth).
+// The system texts change every second: give up more as soon as they no
+// longer fit, bring details back at most once a minute (nothing appearing and
+// disappearing back and forth).
 let growAt = 0;
 function refitOnTick() {
-  if (noneCut(SYS_CHECKS) && (app.style.zoom === '' || Date.now() < growAt)) return;
+  const over = overflow();
+  const worse = over > overAfterFit;
+  const retry = (shedNow.length > 0 || over > 0) && Date.now() >= growAt;
+  if (!worse && !retry) return;
   growAt = Date.now() + 60000;
-  const before = app.style.zoom;
+  const before = shedNow.join();
   fitAll();
-  if (app.style.zoom !== before) drawWeatherBg();
+  if (shedNow.join() !== before) {
+    drawWeatherBg();
+    drawNetSpark();
+  }
 }
 
 /* ---------------- market badges ---------------- */
@@ -383,17 +433,43 @@ window.dash.onQuotes((d) => {
 /* ---------------- clock ---------------- */
 
 let clockShape = '';
+const clockFormats = { locale: null };
+
+/**
+ * Nodes of a formatted date or time: the `optional` part, with the separator
+ * next to it, in a span of class `cls` (hidden when given up, see SHED);
+ * `swap[type]` turns other parts into their own nodes.
+ */
+function partNodes(parts, optional, cls, swap = {}) {
+  const plain = (list) => list.flatMap((p) => swap[p.type]?.(p.value) ?? [p.value]);
+  const i = parts.findIndex((p) => p.type === optional);
+  if (i < 0) return plain(parts);
+  // The separator on the side of the rest: "19 octobre| 2026", "2026年|10月".
+  const from = i > 0 && parts[i - 1].type === 'literal' ? i - 1 : i;
+  const to = from === i && parts[i + 1]?.type === 'literal' ? i + 1 : i;
+  const text = parts.slice(from, to + 1).map((p) => p.value).join('');
+  return [...plain(parts.slice(0, from)), el('span', cls, text), ...plain(parts.slice(to + 1))];
+}
 
 function tickClock() {
+  if (clockFormats.locale !== i18n.locale) {
+    clockFormats.locale = i18n.locale;
+    clockFormats.time = new Intl.DateTimeFormat(i18n.locale, { hour: 'numeric', minute: 'numeric', second: 'numeric' });
+    clockFormats.day = new Intl.DateTimeFormat(i18n.locale, { weekday: 'long' });
+    clockFormats.full = new Intl.DateTimeFormat(i18n.locale, { day: 'numeric', month: 'long', year: 'numeric' });
+    clockFormats.month = new Intl.DateTimeFormat(i18n.locale, { month: 'short' });
+  }
   const d = new Date();
-  const time = d.toLocaleTimeString(i18n.locale);
-  const day = d.toLocaleDateString(i18n.locale, { weekday: 'long' });
-  const full = d.toLocaleDateString(i18n.locale, { day: 'numeric', month: 'long', year: 'numeric' });
-  $('clockTime').textContent = time;
+  const time = clockFormats.time.formatToParts(d);
+  const day = clockFormats.day.format(d);
+  const full = clockFormats.full.formatToParts(d);
+  $('clockTime').replaceChildren(...partNodes(time, 'second', 'tSec'));
   $('dateDay').textContent = day;
-  $('dateFull').textContent = full;
+  // Both forms of the month: the short one shows once the long one is given up.
+  const month = (long) => [el('span', 'mLong', long), el('span', 'mShort', clockFormats.month.format(d))];
+  $('dateFull').replaceChildren(...partNodes(full, 'year', 'dYear', { month }));
   // A new day or one more digit (9:59 -> 10:00) changes the room they take.
-  const shape = `${time.length}|${day}|${full}`;
+  const shape = `${$('clockTime').textContent.length}|${day}|${$('dateFull').textContent}`;
   if (shape !== clockShape) {
     clockShape = shape;
     scheduleFit();
@@ -600,7 +676,11 @@ function drawNetSpark() {
   spark.down.setAttribute('points', dPath);
   spark.up.setAttribute('points', path(netHist.up));
   const [pv, pu] = fmtRate(peak);
-  spark.label.textContent = t('sys.peak', { value: `${pv} ${pu}` });
+  // The value alone in a narrow card, nothing when even that does not fit.
+  for (const text of [t('sys.peak', { value: `${pv} ${pu}` }), `${pv} ${pu}`, '']) {
+    spark.label.textContent = text;
+    if (spark.label.getComputedTextLength() <= W - 4) break;
+  }
 }
 
 /* ---------------- chart ---------------- */
@@ -844,7 +924,7 @@ $('zooms').addEventListener('click', async (e) => {
   if (!b) return;
   config = await window.dash.setZoom(Number(b.dataset.z));
   syncSettings();
-  scheduleFit();   // the floor depends on the zoom setting
+  scheduleFit();   // the room in CSS px changes with it
   // Zoom changes the viewport size: the SVGs must be redrawn.
   drawNetSpark();
   if (!$('chartOv').hidden) loadChart();
