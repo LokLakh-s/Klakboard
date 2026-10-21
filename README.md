@@ -95,9 +95,12 @@ second screen. The layout follows the shape of the screen:
   curves, and the weather card the temperature over the next 24 hours and the
   next 12 hours one by one.
 
-Any window size in between works too, down to 480 × 320: the date goes on one
-line or two, the Moon and the Sun beside the weather icon or below it, and when
-room is still short the dashboard shrinks as a whole rather than cutting a text.
+Any window size in between works too, at any zoom, and texts always keep the
+size the zoom gives them. The date goes on one line or two, the Moon and the Sun
+beside the weather icon or below it; when room is still short, the least useful
+details give way one by one (the month abbreviated, the year, the CPU model, the
+feels-like temperature…) and come back as soon as there is room. The clock, the
+prices, the temperature and the system readings always stay.
 
 <p align="center">
   <img src="docs/screenshots/bar-1920x480.png" width="720" alt="Bar layout on a 1920 × 480 screen: badges, weather and system side by side">
