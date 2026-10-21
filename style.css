@@ -793,12 +793,15 @@ select.input { cursor: pointer; }
  * as soon as there is room.
  */
 .shed-monthShort .mLong, .shed-year .dYear, .shed-seconds .tSec, .shed-weekday .dateDay, .shed-date .dateText,
-.shed-moonLit #wMoonLitPct, .shed-dayLength #wDayLen, .shed-feels .wFeels, .shed-wHead .wHead, .shed-wDesc .wDesc,
+.shed-moonLit #wMoonLitPct, .shed-dayLength #wDayLen, .shed-feels .weather:not(.noSite) .wFeels, .shed-wHead .wHead, .shed-wDesc .weather:not(.noSite) .wDesc,
 .shed-moon .moonRow, .shed-sun .sunRow, .shed-moon.shed-sun .wAstro,
 .shed-stormWind .wStat:nth-child(n+3), .shed-wStats .wStats,
 .shed-cpuFoot .card.cpu .cFoot, .shed-cores .cores, .shed-ramFree #ramFree, .shed-ramFoot .card.ram .cFoot,
 .shed-gpuName #gpuName, .shed-vram .card.gpu .miniRow, .shed-gpuFoot .card.gpu .cFoot,
 .shed-netTotals .card.net .cFoot, .shed-netSpark .netSpark { display: none; }
 .shed-monthShort .mShort { display: inline; }
+/* First launch: the invitation to pick a city (description and feels-like
+   lines) stays, the empty stats go. */
+.weather.noSite .wStats { display: none; }
 /* The fan and temperature alone stay on the right. */
 .shed-gpuName #gpuFanTemp { margin-left: auto; }

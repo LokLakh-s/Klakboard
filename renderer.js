@@ -1733,6 +1733,7 @@ function renderHourly(hours) {
 
 function renderWeatherEvent({ data, error, needsSite: noSite }) {
   needsSite = !!noSite;
+  $('weather').classList.toggle('noSite', needsSite);
   $('weather').title = t(needsSite ? 'weather.pickCityTitle' : 'weather.openMap');
   document.querySelector('.wOpen').hidden = needsSite;
   if (needsSite) renderNoSite();
