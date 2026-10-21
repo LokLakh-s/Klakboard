@@ -2,9 +2,7 @@
  *
  * REAL DENSITY: 960 px / 75 mm = 12.8 px/mm (~325 PPI, 3.6" diagonal).
  * 16 px text is only 1.25 mm high there. The zoom setting (100 to 175 %)
- * scales everything at once for those who want it bigger, and nothing makes
- * text smaller than it: when room lacks, details are given up instead
- * (fitting in renderer.js, rules at the end of this file).
+ * scales everything at once for those who want it bigger.
  *
  * Contrast matters as much as size at this scale: greys were raised from
  * #7c89a1 (4.9:1) to #aab6c9 (~9:1 on the card background).
@@ -134,9 +132,6 @@ html, body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .dateDay { text-transform: capitalize; }
-.mShort { display: none; }
-/* Weekday and date on one line when the bar has room for it (renderer.js). */
-.dateText.oneLine { flex-direction: row; align-items: baseline; gap: 0.3em; }
 
 .clockTime {
   flex: 0 0 auto; margin-left: auto;
@@ -170,15 +165,13 @@ html, body {
 .iBtn:hover { background: var(--hover); color: var(--txt); }
 
 .mScroll { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
-.shed-badgeRows .mScroll { max-height: var(--badgeRows); }
-.shed-badgeScroll .mScroll { max-height: var(--badgeRow); }
 
 /* ---- weather: fills the space left under the badges ----
    Its height comes from the remaining space (container-type: size), not from
-   its content: with three rows of badges or a high zoom, the card compacts,
-   then gives up details (renderer.js). */
+   its content: with three rows of badges or a high zoom, the card compacts
+   instead of turning the badges into a scrolling area. */
 .weather {
-  flex: 1 1 0; min-height: 0;
+  flex: 1 1 0; min-height: 9rem;
   container-type: size;
   overflow: hidden;
   display: flex; flex-direction: column; gap: 0.35rem;
@@ -193,18 +186,21 @@ html, body {
 .weather:hover, .weather:focus-visible { background: var(--hover); outline: none; }
 
 .wHead { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
-.wPlace { font-size: 1.5rem; font-weight: 700; color: var(--dim); white-space: nowrap; min-width: 0; }
+.wPlace { font-size: 1.5rem; font-weight: 700; color: var(--dim); }
 .wOpen { font-size: 1.4rem; color: var(--accent); white-space: nowrap; }
-@container (max-width: 22rem) {
-  .wTitle, .wOpenLbl { display: none; }
-}
 
-/* Takes the card's free height, content centred vertically; never smaller
-   than its content (the card gives up details instead, see renderer.js). */
-.wMain { flex: 1 1 auto; display: flex; align-items: center; gap: 1.4rem; position: relative; }
-/* Moon phase, sunrise and sunset, day length: next to the icon when they fit
-   there, on their own line otherwise (.astroBelow, set by renderer.js). */
-.wAstro { flex: 0 1 auto; display: flex; flex-direction: column; gap: 0.4rem; }
+/* Takes the card's free height, content centred vertically. */
+.wMain { flex: 1 1 auto; display: flex; align-items: center; gap: 1.4rem; min-height: 0; position: relative; }
+/* Moon phase, sunrise and sunset, day length: on their own line, under the
+   icon and the temperature. */
+.wMain:has(> .wAstro:not([hidden])) {
+  display: grid; grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "icon reading" "astro astro";
+  align-content: center; row-gap: 0.5rem;
+}
+.wIcon { grid-area: icon; }
+.wReading { grid-area: reading; }
+.wAstro { grid-area: astro; display: flex; flex-wrap: wrap; column-gap: 1.2rem; row-gap: 0.4rem; }
 .wAstro[hidden] { display: none; }
 .wAstroRow { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
 .wMoon { flex: 0 0 auto; width: 2.5rem; height: 2.5rem; overflow: visible; }
@@ -224,15 +220,12 @@ html, body {
 /* The Meteocons drawing only fills ~70 % of its box: negative margins keep
    the box from inflating the card. */
 .wIcon { flex: 0 0 auto; width: 9rem; height: 9rem; margin: -1.2rem -0.6rem -1.2rem -1rem; }
-.wReading { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; flex: 0 1 auto; }
+.wReading { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; min-width: 0; }
 .wTemp { font-size: 4rem; font-weight: 400; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .wUnit { font-size: 0.55em; margin-left: 0.15em; vertical-align: 0.6em; color: var(--dim); }
 .wSide { display: flex; flex-direction: column; align-items: flex-end; text-align: right; min-width: 0; }
-.wDesc {
-  font-size: 1.7rem; line-height: 1.15; color: var(--txt);
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
-}
-.wFeels { font-size: 1.45rem; color: var(--faint); white-space: nowrap; }
+.wDesc { font-size: 1.7rem; color: var(--txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wFeels { font-size: 1.45rem; color: var(--faint); }
 
 .wStats { display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 0.8rem; }
 .wStat { display: flex; flex-direction: column; min-width: 0; }
@@ -241,37 +234,31 @@ html, body {
 .wVal.warn { color: var(--warn); }
 .wVal.alert { color: var(--down); }
 
-/* Compact step when the card lacks its natural height (three rows of
-   badges): smaller icon and temperature. Below that, the card gives up
-   details (fitting in renderer.js). Stats follow the width (cqi). */
-@container (max-height: 15rem) {
+/* Compact steps when the card lacks its natural height (three rows of
+   badges, high zoom): smaller icon and temperature, no feels-like, then no
+   header (the whole card stays clickable). Stats follow the width (cqi) so
+   they do not overlap above 115 %. */
+@container (max-height: 13.5rem) {
   .wIcon { width: 6rem; height: 6rem; margin: -0.8rem -0.4rem -0.8rem -0.7rem; }
   .wTemp { font-size: 2.8rem; }
   .wReading { gap: 0.1rem; }
-  .wAstro { gap: 0.15rem; }
+  .wFeels { display: none; }
 }
-.astroBelow .wMain {
-  display: grid; grid-template-columns: auto minmax(min-content, 1fr);
-  grid-template-areas: "icon reading" "astro astro";
-  align-content: center; row-gap: 0.5rem;
+@container (max-height: 10rem) {
+  .wHead { display: none; }
 }
-.astroBelow .wIcon { grid-area: icon; }
-.astroBelow .wReading { grid-area: reading; }
-.astroBelow .wAstro { grid-area: astro; flex-direction: row; flex-wrap: wrap; column-gap: 1.2rem; }
-/* Narrow card (bar screens): smaller icon and temperature, stats on two rows
-   (their text follows the card width, sized so the longest label fits). */
+/* No room for the moon and sun line under the icon: left out. */
+@container (max-height: 19rem) {
+  .wAstro { display: none; }
+  .wMain:has(> .wAstro:not([hidden])) { display: flex; }
+}
+/* Narrow card (bar screens): smaller icon and temperature, stats on two rows. */
 @container (max-width: 24rem) {
   .wIcon { width: 6rem; height: 6rem; margin: -0.8rem -0.4rem -0.8rem -0.7rem; }
   .wTemp { font-size: 2.8rem; }
   .wStats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 0.4rem; }
-  .wLbl { font-size: min(1.35rem, 6cqi); }
-  .wVal { font-size: min(1.7rem, 8.6cqi); }
-}
-/* Very narrow card (bar screens up to ~1500 px wide): a smaller icon, closer to
-   the temperature. */
-@container (max-width: 17rem) {
-  .wIcon { width: 4.5rem; height: 4.5rem; margin: -0.6rem -0.3rem -0.6rem -0.5rem; }
-  .wMain { gap: 0.6rem; }
+  .wLbl { font-size: min(1.35rem, 7cqi); }
+  .wVal { font-size: min(1.7rem, 9.6cqi); }
 }
 
 .emptyHint { padding: 1.4rem 0.8rem; text-align: center; color: var(--faint); font-size: 1.15rem; }
@@ -382,19 +369,14 @@ html, body {
   padding: 0.25rem 0.45rem 0.3rem;
   min-width: 0;
 }
-/* CPU and NETWORK absorb the free height, whatever the zoom; no card gets
-   smaller than its content (the column gives up details instead, see
-   renderer.js). */
-.card.grow { flex: 1 1 0; }
+/* CPU and NETWORK absorb the free height, whatever the zoom. */
+.card.grow { flex: 1 1 0; min-height: 0; }
 /* A click opens the card's history. */
 .card[data-detail] { cursor: pointer; transition: background .12s; }
 .card[data-detail]:hover, .card[data-detail]:focus-visible { background: var(--hover); outline: none; }
 
 /* History curves inside the cards: large screens only. */
 .cardChart { display: none; width: 100%; min-height: 0; margin-top: 0.3rem; }
-/* Curves take the room left to them: their drawing size (canvas, SVG) must not
-   count as content, or a card could no longer shrink below its last size. */
-.cardChart, .wChart, .netSpark, .sdChart canvas, .coreCell canvas { contain: size; }
 
 .cHead {
   display: flex; justify-content: space-between; align-items: baseline;
@@ -421,7 +403,7 @@ html, body {
 /* --- per-core bars --- */
 .cores {
   display: flex; align-items: flex-end; gap: 1px;
-  flex: 1 1 auto; min-height: 1.4rem;
+  flex: 1 1 auto; min-height: 1.8rem;
 }
 .core {
   flex: 1 1 0; min-width: 0;
@@ -471,17 +453,9 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 .netUnit { font-size: 1.15rem; color: var(--faint); letter-spacing: .3px; line-height: 1.15; }
-/* Narrow card (bar screens up to ~1200 px wide): down, up and ping one under
-   the other, each on a line. */
-.card.net { container-type: inline-size; }
-@container (max-width: 9rem) {
-  .netLive { flex-direction: column; }
-  .netCol { display: flex; align-items: baseline; justify-content: center; gap: 0.35rem; padding: 0.1rem 0.3rem; }
-  .netArrow { flex: 0 0 auto; }
-}
 
 /* Throughput history: takes the card's remaining height. */
-.netSpark { flex: 1 1 auto; min-height: 1.8rem; margin-top: 0.2rem; position: relative; }
+.netSpark { flex: 1 1 auto; min-height: 1.4rem; margin-top: 0.2rem; position: relative; }
 .netSpark svg { width: 100%; height: 100%; display: block; }
 
 .purge {
@@ -497,13 +471,12 @@ html, body {
 /* ================= screen shapes =================
  * The layout above is for landscape screens close to 3:2 (960 x 640,
  * 1024 x 600, 800 x 480). Bar screens (1920 x 480, 2560 x 720, 1280 x 400) and
- * portrait screens get their own arrangement. Zoom keeps the aspect ratio, so
- * the mode only changes with it around the 1000 px a bar layout needs.
+ * portrait screens get their own arrangement; zoom keeps the aspect ratio, so
+ * the mode does not change with it.
  */
 
-/* Bar: badges | weather | system, side by side; the badges share the height.
-   Under 1000 px wide, three columns get too narrow: landscape layout instead. */
-@media (min-aspect-ratio: 12/5) and (min-width: 1000px) {
+/* Bar: badges | weather | system, side by side; the badges share the height. */
+@media (min-aspect-ratio: 12/5) {
   .app {
     display: grid;
     grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.55fr) minmax(0, 1.3fr);
@@ -522,7 +495,7 @@ html, body {
     grid-column: 3; grid-row: 1 / 3;
     display: grid;
     grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-rows: minmax(min-content, 1fr) minmax(min-content, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas: "cpu ram net" "cpu gpu net";
     border-left: 1px solid var(--line);
   }
@@ -537,13 +510,13 @@ html, body {
 @media (max-aspect-ratio: 4/5) {
   .app { flex-direction: column; }
   .markets { flex: 0 0 auto; border-right: none; border-bottom: 1px solid var(--line); }
-  /* Its content's height: the system cards below take what is left. */
-  .weather { flex: 0 0 auto; container-type: inline-size; }
+  .weather { flex: 0 0 auto; height: clamp(11rem, 22vh, 19rem); }
   .sys {
     flex: 1 1 auto; min-height: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-rows: minmax(min-content, 1fr) auto minmax(min-content, 1fr);
+    /* The network card keeps its full content; the CPU bars shrink first. */
+    grid-template-rows: minmax(0, 1fr) auto minmax(min-content, 1fr);
     grid-template-areas: "cpu cpu" "ram gpu" "net net";
   }
   .card.cpu { grid-area: cpu; }
@@ -556,7 +529,7 @@ html, body {
 
 /* Narrow cards (bar and portrait): footers and headers wrap instead of
    cutting their text. */
-@media (min-aspect-ratio: 12/5) and (min-width: 1000px), (max-aspect-ratio: 4/5) {
+@media (min-aspect-ratio: 12/5), (max-aspect-ratio: 4/5) {
   .cFoot { flex-wrap: wrap; column-gap: 0.6rem; row-gap: 0; }
   .cHead { flex-wrap: wrap; }
 }
@@ -786,22 +759,3 @@ select.input { cursor: pointer; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 0.2rem; }
 ::-webkit-scrollbar-thumb:hover { background: var(--faint); }
-
-/* ================= details given up =================
- * When the window has no room for everything at the zoom setting, renderer.js
- * gives these up one by one, least useful first (SHED), and brings them back
- * as soon as there is room.
- */
-.shed-monthShort .mLong, .shed-year .dYear, .shed-seconds .tSec, .shed-weekday .dateDay, .shed-date .dateText,
-.shed-moonLit #wMoonLitPct, .shed-dayLength #wDayLen, .shed-feels .weather:not(.noSite) .wFeels, .shed-wHead .wHead, .shed-wDesc .weather:not(.noSite) .wDesc,
-.shed-moon .moonRow, .shed-sun .sunRow, .shed-moon.shed-sun .wAstro,
-.shed-stormWind .wStat:nth-child(n+3), .shed-wStats .wStats,
-.shed-cpuFoot .card.cpu .cFoot, .shed-cores .cores, .shed-ramFree #ramFree, .shed-ramFoot .card.ram .cFoot,
-.shed-gpuName #gpuName, .shed-vram .card.gpu .miniRow, .shed-gpuFoot .card.gpu .cFoot,
-.shed-netTotals .card.net .cFoot, .shed-netSpark .netSpark { display: none; }
-.shed-monthShort .mShort { display: inline; }
-/* First launch: the invitation to pick a city (description and feels-like
-   lines) stays, the empty stats go. */
-.weather.noSite .wStats { display: none; }
-/* The fan and temperature alone stay on the right. */
-.shed-gpuName #gpuFanTemp { margin-left: auto; }

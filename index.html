@@ -29,8 +29,8 @@
       <div class="mScroll" id="mScroll"></div>
       <section class="weather" id="weather" role="button" tabindex="0" data-i18n-title="weather.openMap" title="Open the weather map">
         <div class="wHead">
-          <span class="wPlace"><span class="wTitle"><span data-i18n="weather.title">Weather</span> · </span><span id="wSite">--</span></span>
-          <span class="wOpen"><span class="wOpenLbl" data-i18n="weather.map">Map</span> &#8599;</span>
+          <span class="wPlace"><span data-i18n="weather.title">Weather</span> · <span id="wSite">--</span></span>
+          <span class="wOpen"><span data-i18n="weather.map">Map</span> &#8599;</span>
         </div>
         <!-- The next 24 hours as a faded curve behind the icon and the
              temperature; a click on it opens the weather detail. -->
@@ -39,7 +39,7 @@
           <img class="wIcon" id="wIcon" alt="" hidden />
           <!-- Moon phase (drawn by renderer.js), sun times of the city, day length. -->
           <div class="wAstro" id="wAstro" hidden>
-            <div class="wAstroRow moonRow">
+            <div class="wAstroRow">
               <svg class="wMoon" id="wMoon" viewBox="0 0 64 64" aria-hidden="true">
                 <defs>
                   <linearGradient id="moonGrad" x1="0" y1="0" x2="0" y2="1">
@@ -54,7 +54,7 @@
                 <span class="wAstroSub" id="wMoonLitPct">--</span>
               </div>
             </div>
-            <div class="wAstroRow sunRow">
+            <div class="wAstroRow">
               <img class="wSunIcon" src="icons/weather/sunrise.svg" alt="" />
               <div class="wAstroText">
                 <span class="wAstroMain" id="wSunTimes">--</span>
